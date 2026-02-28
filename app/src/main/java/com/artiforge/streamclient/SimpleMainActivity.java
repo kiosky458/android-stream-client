@@ -7,6 +7,7 @@ import android.os.Handler;
 import android.os.Looper;
 import android.os.VibrationEffect;
 import android.os.Vibrator;
+import android.os.VibratorManager;
 import android.widget.Button;
 import android.widget.EditText;
 import android.widget.TextView;
@@ -29,7 +30,7 @@ public class SimpleMainActivity extends AppCompatActivity {
     private static final int PERMISSION_REQUEST_CODE = 100;
     private static final String[] REQUIRED_PERMISSIONS = {
             Manifest.permission.CAMERA,
-            Manifest.permission.VIBRATE
+            Manifest.permission.POST_NOTIFICATIONS
     };
 
     private EditText serverUrlInput;
@@ -42,6 +43,8 @@ public class SimpleMainActivity extends AppCompatActivity {
     private Handler mainHandler;
     private Vibrator vibrator;
     private CameraStreamManager cameraManager;
+    private okhttp3.OkHttpClient httpClient = null;
+    private Runnable autoStopRunnable = null;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -51,7 +54,14 @@ public class SimpleMainActivity extends AppCompatActivity {
             setContentView(R.layout.activity_simple);
             
             mainHandler = new Handler(Looper.getMainLooper());
-            vibrator = (Vibrator) getSystemService(VIBRATOR_SERVICE);
+            
+            // 初始化震動器（Android 12+ 使用新 API）
+            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.S) {
+                VibratorManager vibratorManager = (VibratorManager) getSystemService(VIBRATOR_SERVICE);
+                vibrator = vibratorManager.getDefaultVibrator();
+            } else {
+                vibrator = (Vibrator) getSystemService(VIBRATOR_SERVICE);
+            }
             
             // 初始化 UI
             serverUrlInput = findViewById(R.id.serverUrlInput);
@@ -93,7 +103,7 @@ public class SimpleMainActivity extends AppCompatActivity {
             }
             
             appendLog("✅ App 啟動成功！");
-            appendLog("版本: 1.0.2 (完整串流版)");
+            appendLog("版本: 1.0.4 (Android 16 優化版)");
             appendLog("請輸入伺服器網址並點擊連接");
             
         } catch (Exception e) {
@@ -262,29 +272,62 @@ public class SimpleMainActivity extends AppCompatActivity {
     
     private void doVibrate() {
         try {
-            if (vibrator != null && vibrator.hasVibrator()) {
+            appendLog("🔍 檢查震動器...");
+            appendLog("   Android 版本: " + android.os.Build.VERSION.SDK_INT);
+            
+            if (vibrator == null) {
+                appendLog("❌ 震動器為 null");
+                return;
+            }
+            
+            appendLog("   震動器存在: " + vibrator.hasVibrator());
+            
+            if (vibrator.hasVibrator()) {
                 if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
-                    VibrationEffect effect = VibrationEffect.createOneShot(500, VibrationEffect.DEFAULT_AMPLITUDE);
+                    // Android 8.0+ 使用 VibrationEffect
+                    VibrationEffect effect = VibrationEffect.createOneShot(
+                        1000,  // 加長到 1 秒更明顯
+                        255    // 最大強度
+                    );
                     vibrator.vibrate(effect);
+                    appendLog("✅ 震動執行完成 (VibrationEffect API, 1000ms)");
                 } else {
                     // 舊版 API
-                    vibrator.vibrate(500);
+                    vibrator.vibrate(1000);
+                    appendLog("✅ 震動執行完成 (Legacy API, 1000ms)");
                 }
-                appendLog("✅ 震動執行完成 (500ms)");
             } else {
                 appendLog("⚠️ 裝置不支援震動");
             }
+        } catch (SecurityException e) {
+            appendLog("❌ 震動權限被拒絕: " + e.getMessage());
         } catch (Exception e) {
             appendLog("❌ 震動失敗: " + e.getMessage());
+            e.printStackTrace();
         }
     }
     
     private void startCameraStream() {
         try {
-            appendLog("📹 啟動相機...");
+            // 取消之前的自動停止
+            if (autoStopRunnable != null) {
+                mainHandler.removeCallbacks(autoStopRunnable);
+            }
+            
+            appendLog("📹 啟動相機串流（10 秒）...");
             cameraManager.startCamera();
-            // 不在這裡啟動串流，等相機準備好
             appendLog("⏳ 等待相機就緒...");
+            
+            // 設定 10 秒後自動停止
+            autoStopRunnable = new Runnable() {
+                @Override
+                public void run() {
+                    appendLog("⏰ 10 秒到，自動停止串流");
+                    stopCameraStream();
+                }
+            };
+            mainHandler.postDelayed(autoStopRunnable, 10000);
+            
         } catch (Exception e) {
             appendLog("❌ 相機啟動失敗: " + e.getMessage());
         }
@@ -292,14 +335,18 @@ public class SimpleMainActivity extends AppCompatActivity {
     
     private void stopCameraStream() {
         try {
+            // 取消自動停止（如果手動觸發）
+            if (autoStopRunnable != null) {
+                mainHandler.removeCallbacks(autoStopRunnable);
+                autoStopRunnable = null;
+            }
+            
             cameraManager.stopStreaming();
             appendLog("⏹️ 相機串流已停止");
         } catch (Exception e) {
             appendLog("❌ 停止失敗: " + e.getMessage());
         }
     }
-    
-    private okhttp3.OkHttpClient httpClient = null;
     
     private void uploadFrame(byte[] jpegData) {
         if (!isConnected || socket == null) return;
