@@ -84,13 +84,18 @@ public class SimpleMainActivity extends AppCompatActivity {
                     // 註冊裝置
                     try {
                         JSONObject deviceInfo = new JSONObject();
-                        deviceInfo.put("device_id", android.os.Build.MODEL);
-                        deviceInfo.put("device_name", android.os.Build.MANUFACTURER + " " + android.os.Build.MODEL);
-                        socket.emit("register_device", deviceInfo);
-                        appendLog("📱 裝置已註冊");
+                        deviceInfo.put("device_id", android.os.Build.MANUFACTURER + "_" + android.os.Build.MODEL);
+                        socket.emit("android_register", deviceInfo);
+                        appendLog("📱 發送註冊請求: " + android.os.Build.MANUFACTURER + "_" + android.os.Build.MODEL);
                     } catch (Exception e) {
                         appendLog("❌ 註冊失敗: " + e.getMessage());
                     }
+                });
+            });
+            
+            socket.on("registered", args -> {
+                mainHandler.post(() -> {
+                    appendLog("✅ 裝置註冊成功！");
                 });
             });
             
@@ -108,19 +113,19 @@ public class SimpleMainActivity extends AppCompatActivity {
                 });
             });
             
-            socket.on("start_stream", args -> {
+            socket.on("cmd_start_stream", args -> {
                 mainHandler.post(() -> {
                     appendLog("📹 收到開始串流指令（相機功能尚未實作）");
                 });
             });
             
-            socket.on("stop_stream", args -> {
+            socket.on("cmd_stop_stream", args -> {
                 mainHandler.post(() -> {
                     appendLog("🛑 收到停止串流指令");
                 });
             });
             
-            socket.on("vibrate", args -> {
+            socket.on("cmd_vibrate", args -> {
                 mainHandler.post(() -> {
                     appendLog("📳 收到震動指令");
                     // TODO: 實作震動功能
