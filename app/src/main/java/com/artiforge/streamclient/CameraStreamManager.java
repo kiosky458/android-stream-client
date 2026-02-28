@@ -32,10 +32,13 @@ public class CameraStreamManager {
     private FrameCallback frameCallback;
     
     private boolean isStreaming = false;
+    private long lastFrameTime = 0;
+    private static final long FRAME_INTERVAL_MS = 100; // 最快 10 FPS
     
     public interface FrameCallback {
         void onFrameAvailable(byte[] jpegData);
         void onError(String error);
+        void onInfo(String message);
     }
     
     public CameraStreamManager(Context context) {
@@ -57,10 +60,11 @@ public class CameraStreamManager {
             Size[] sizes = characteristics.get(CameraCharacteristics.SCALER_STREAM_CONFIGURATION_MAP)
                     .getOutputSizes(ImageFormat.YUV_420_888);
             
-            // 選擇接近 768x1024 的解析度
-            Size selectedSize = sizes[0];
+            // 選擇低解析度（提升速度，降低延遲）
+            Size selectedSize = sizes[sizes.length - 1]; // 從最小的開始
             for (Size size : sizes) {
-                if (size.getWidth() <= 1024 && size.getHeight() <= 1024) {
+                // 目標：480x640 或更小
+                if (size.getWidth() <= 480 && size.getHeight() <= 640) {
                     selectedSize = size;
                     break;
                 }
@@ -75,6 +79,14 @@ public class CameraStreamManager {
             
             imageReader.setOnImageAvailableListener(reader -> {
                 if (!isStreaming) return;
+                
+                // 節流：限制幀率
+                long currentTime = System.currentTimeMillis();
+                if (currentTime - lastFrameTime < FRAME_INTERVAL_MS) {
+                    reader.acquireLatestImage().close(); // 丟棄此幀
+                    return;
+                }
+                lastFrameTime = currentTime;
                 
                 Image image = reader.acquireLatestImage();
                 if (image != null) {
@@ -91,6 +103,9 @@ public class CameraStreamManager {
                 @Override
                 public void onOpened(@NonNull CameraDevice camera) {
                     cameraDevice = camera;
+                    if (frameCallback != null) {
+                        frameCallback.onInfo("✅ 相機已開啟");
+                    }
                     createCaptureSession();
                 }
                 
@@ -129,6 +144,9 @@ public class CameraStreamManager {
                     @Override
                     public void onConfigured(@NonNull CameraCaptureSession session) {
                         captureSession = session;
+                        if (frameCallback != null) {
+                            frameCallback.onInfo("✅ 相機設定完成");
+                        }
                         startStreaming();
                     }
                     
@@ -158,6 +176,10 @@ public class CameraStreamManager {
             
             captureSession.setRepeatingRequest(builder.build(), null, backgroundHandler);
             isStreaming = true;
+            
+            if (frameCallback != null) {
+                frameCallback.onInfo("✅ 相機串流已啟動 (10 FPS, 480p)");
+            }
             
         } catch (CameraAccessException e) {
             if (frameCallback != null) {
@@ -209,7 +231,7 @@ public class CameraStreamManager {
             
             YuvImage yuvImage = new YuvImage(nv21, ImageFormat.NV21, image.getWidth(), image.getHeight(), null);
             ByteArrayOutputStream out = new ByteArrayOutputStream();
-            yuvImage.compressToJpeg(new Rect(0, 0, image.getWidth(), image.getHeight()), 70, out);
+            yuvImage.compressToJpeg(new Rect(0, 0, image.getWidth(), image.getHeight()), 50, out);
             
             return out.toByteArray();
         } catch (Exception e) {

@@ -71,6 +71,11 @@ public class SimpleMainActivity extends AppCompatActivity {
                 public void onError(String error) {
                     appendLog("❌ 相機錯誤: " + error);
                 }
+                
+                @Override
+                public void onInfo(String message) {
+                    appendLog(message);
+                }
             });
             
             // 連接按鈕
@@ -144,7 +149,13 @@ public class SimpleMainActivity extends AppCompatActivity {
             
             socket.on(Socket.EVENT_CONNECT_ERROR, args -> {
                 mainHandler.post(() -> {
-                    appendLog("❌ 連接錯誤: " + (args.length > 0 ? args[0].toString() : "未知錯誤"));
+                    String error = args.length > 0 ? args[0].toString() : "未知錯誤";
+                    appendLog("❌ 連接錯誤: " + error);
+                    
+                    // 停止相機串流（如果正在運行）
+                    if (cameraManager != null) {
+                        cameraManager.stopStreaming();
+                    }
                 });
             });
             
@@ -250,24 +261,45 @@ public class SimpleMainActivity extends AppCompatActivity {
     }
     
     private void doVibrate() {
-        if (vibrator != null && vibrator.hasVibrator()) {
-            VibrationEffect effect = VibrationEffect.createOneShot(500, VibrationEffect.DEFAULT_AMPLITUDE);
-            vibrator.vibrate(effect);
-            appendLog("✅ 震動執行完成");
+        try {
+            if (vibrator != null && vibrator.hasVibrator()) {
+                if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
+                    VibrationEffect effect = VibrationEffect.createOneShot(500, VibrationEffect.DEFAULT_AMPLITUDE);
+                    vibrator.vibrate(effect);
+                } else {
+                    // 舊版 API
+                    vibrator.vibrate(500);
+                }
+                appendLog("✅ 震動執行完成 (500ms)");
+            } else {
+                appendLog("⚠️ 裝置不支援震動");
+            }
+        } catch (Exception e) {
+            appendLog("❌ 震動失敗: " + e.getMessage());
         }
     }
     
     private void startCameraStream() {
-        appendLog("📹 啟動相機...");
-        cameraManager.startCamera();
-        cameraManager.startStreaming();
-        appendLog("✅ 相機串流已啟動");
+        try {
+            appendLog("📹 啟動相機...");
+            cameraManager.startCamera();
+            // 不在這裡啟動串流，等相機準備好
+            appendLog("⏳ 等待相機就緒...");
+        } catch (Exception e) {
+            appendLog("❌ 相機啟動失敗: " + e.getMessage());
+        }
     }
     
     private void stopCameraStream() {
-        cameraManager.stopStreaming();
-        appendLog("⏹️ 相機串流已停止");
+        try {
+            cameraManager.stopStreaming();
+            appendLog("⏹️ 相機串流已停止");
+        } catch (Exception e) {
+            appendLog("❌ 停止失敗: " + e.getMessage());
+        }
     }
+    
+    private okhttp3.OkHttpClient httpClient = null;
     
     private void uploadFrame(byte[] jpegData) {
         if (!isConnected || socket == null) return;
@@ -275,10 +307,18 @@ public class SimpleMainActivity extends AppCompatActivity {
         try {
             String serverUrl = serverUrlInput.getText().toString().trim();
             
+            // 初始化 HTTP 客戶端（複用連接）
+            if (httpClient == null) {
+                httpClient = new okhttp3.OkHttpClient.Builder()
+                    .connectTimeout(2, java.util.concurrent.TimeUnit.SECONDS)
+                    .writeTimeout(2, java.util.concurrent.TimeUnit.SECONDS)
+                    .readTimeout(2, java.util.concurrent.TimeUnit.SECONDS)
+                    .build();
+            }
+            
             // 使用 OkHttp 上傳影格
             new Thread(() -> {
                 try {
-                    okhttp3.OkHttpClient client = new okhttp3.OkHttpClient();
                     okhttp3.RequestBody body = okhttp3.RequestBody.create(
                         jpegData,
                         okhttp3.MediaType.parse("image/jpeg")
@@ -289,14 +329,18 @@ public class SimpleMainActivity extends AppCompatActivity {
                         .post(body)
                         .build();
                     
-                    client.newCall(request).execute();
+                    okhttp3.Response response = httpClient.newCall(request).execute();
+                    response.close(); // 立即關閉回應
+                    
+                } catch (java.net.SocketTimeoutException e) {
+                    // 超時靜默失敗
                 } catch (Exception e) {
-                    // 靜默失敗，避免日誌過多
+                    // 其他錯誤靜默失敗
                 }
             }).start();
             
         } catch (Exception e) {
-            appendLog("❌ 上傳失敗: " + e.getMessage());
+            // 靜默失敗
         }
     }
     
