@@ -51,7 +51,7 @@
             android:layout_height="wrap_content"
             android:hint="@string/server_url_hint"
             android:inputType="textUri"
-            android:text="http://192.168.1.29:8080"
+            android:text="http://59.125.35.234"
             android:textColor="#FFFFFF"
             android:textColorHint="#888888"
             android:backgroundTint="#FFFFFF" />
