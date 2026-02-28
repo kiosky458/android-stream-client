@@ -1,14 +1,21 @@
 package com.artiforge.streamclient;
 
+import android.Manifest;
+import android.content.pm.PackageManager;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
+import android.os.VibrationEffect;
+import android.os.Vibrator;
 import android.widget.Button;
 import android.widget.EditText;
 import android.widget.TextView;
 import android.widget.Toast;
 
+import androidx.annotation.NonNull;
 import androidx.appcompat.app.AppCompatActivity;
+import androidx.core.app.ActivityCompat;
+import androidx.core.content.ContextCompat;
 
 import org.json.JSONObject;
 
@@ -19,6 +26,12 @@ import io.socket.client.Socket;
 
 public class SimpleMainActivity extends AppCompatActivity {
 
+    private static final int PERMISSION_REQUEST_CODE = 100;
+    private static final String[] REQUIRED_PERMISSIONS = {
+            Manifest.permission.CAMERA,
+            Manifest.permission.VIBRATE
+    };
+
     private EditText serverUrlInput;
     private Button connectBtn;
     private TextView statusText;
@@ -27,6 +40,8 @@ public class SimpleMainActivity extends AppCompatActivity {
     private Socket socket;
     private boolean isConnected = false;
     private Handler mainHandler;
+    private Vibrator vibrator;
+    private CameraStreamManager cameraManager;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -36,12 +51,27 @@ public class SimpleMainActivity extends AppCompatActivity {
             setContentView(R.layout.activity_simple);
             
             mainHandler = new Handler(Looper.getMainLooper());
+            vibrator = (Vibrator) getSystemService(VIBRATOR_SERVICE);
             
             // 初始化 UI
             serverUrlInput = findViewById(R.id.serverUrlInput);
             connectBtn = findViewById(R.id.connectBtn);
             statusText = findViewById(R.id.statusText);
             logText = findViewById(R.id.logText);
+            
+            // 初始化相機管理器
+            cameraManager = new CameraStreamManager(this);
+            cameraManager.setFrameCallback(new CameraStreamManager.FrameCallback() {
+                @Override
+                public void onFrameAvailable(byte[] jpegData) {
+                    uploadFrame(jpegData);
+                }
+                
+                @Override
+                public void onError(String error) {
+                    appendLog("❌ 相機錯誤: " + error);
+                }
+            });
             
             // 連接按鈕
             connectBtn.setOnClickListener(v -> {
@@ -52,8 +82,13 @@ public class SimpleMainActivity extends AppCompatActivity {
                 }
             });
             
+            // 檢查權限
+            if (!checkPermissions()) {
+                requestPermissions();
+            }
+            
             appendLog("✅ App 啟動成功！");
-            appendLog("版本: 1.0.1 (WebSocket 測試版)");
+            appendLog("版本: 1.0.2 (完整串流版)");
             appendLog("請輸入伺服器網址並點擊連接");
             
         } catch (Exception e) {
@@ -115,20 +150,22 @@ public class SimpleMainActivity extends AppCompatActivity {
             
             socket.on("cmd_start_stream", args -> {
                 mainHandler.post(() -> {
-                    appendLog("📹 收到開始串流指令（相機功能尚未實作）");
+                    appendLog("📹 收到開始串流指令");
+                    startCameraStream();
                 });
             });
             
             socket.on("cmd_stop_stream", args -> {
                 mainHandler.post(() -> {
                     appendLog("🛑 收到停止串流指令");
+                    stopCameraStream();
                 });
             });
             
             socket.on("cmd_vibrate", args -> {
                 mainHandler.post(() -> {
                     appendLog("📳 收到震動指令");
-                    // TODO: 實作震動功能
+                    doVibrate();
                 });
             });
             
@@ -178,9 +215,95 @@ public class SimpleMainActivity extends AppCompatActivity {
         });
     }
     
+    private boolean checkPermissions() {
+        for (String permission : REQUIRED_PERMISSIONS) {
+            if (ContextCompat.checkSelfPermission(this, permission) != PackageManager.PERMISSION_GRANTED) {
+                return false;
+            }
+        }
+        return true;
+    }
+    
+    private void requestPermissions() {
+        ActivityCompat.requestPermissions(this, REQUIRED_PERMISSIONS, PERMISSION_REQUEST_CODE);
+    }
+    
+    @Override
+    public void onRequestPermissionsResult(int requestCode, @NonNull String[] permissions, @NonNull int[] grantResults) {
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults);
+        
+        if (requestCode == PERMISSION_REQUEST_CODE) {
+            boolean allGranted = true;
+            for (int result : grantResults) {
+                if (result != PackageManager.PERMISSION_GRANTED) {
+                    allGranted = false;
+                    break;
+                }
+            }
+            
+            if (allGranted) {
+                appendLog("✅ 所有權限已授予");
+            } else {
+                appendLog("⚠️ 部分權限被拒絕，功能可能受限");
+            }
+        }
+    }
+    
+    private void doVibrate() {
+        if (vibrator != null && vibrator.hasVibrator()) {
+            VibrationEffect effect = VibrationEffect.createOneShot(500, VibrationEffect.DEFAULT_AMPLITUDE);
+            vibrator.vibrate(effect);
+            appendLog("✅ 震動執行完成");
+        }
+    }
+    
+    private void startCameraStream() {
+        appendLog("📹 啟動相機...");
+        cameraManager.startCamera();
+        cameraManager.startStreaming();
+        appendLog("✅ 相機串流已啟動");
+    }
+    
+    private void stopCameraStream() {
+        cameraManager.stopStreaming();
+        appendLog("⏹️ 相機串流已停止");
+    }
+    
+    private void uploadFrame(byte[] jpegData) {
+        if (!isConnected || socket == null) return;
+        
+        try {
+            String serverUrl = serverUrlInput.getText().toString().trim();
+            
+            // 使用 OkHttp 上傳影格
+            new Thread(() -> {
+                try {
+                    okhttp3.OkHttpClient client = new okhttp3.OkHttpClient();
+                    okhttp3.RequestBody body = okhttp3.RequestBody.create(
+                        jpegData,
+                        okhttp3.MediaType.parse("image/jpeg")
+                    );
+                    
+                    okhttp3.Request request = new okhttp3.Request.Builder()
+                        .url(serverUrl + "/upload_frame")
+                        .post(body)
+                        .build();
+                    
+                    client.newCall(request).execute();
+                } catch (Exception e) {
+                    // 靜默失敗，避免日誌過多
+                }
+            }).start();
+            
+        } catch (Exception e) {
+            appendLog("❌ 上傳失敗: " + e.getMessage());
+        }
+    }
+    
     @Override
     protected void onDestroy() {
         super.onDestroy();
+        cameraManager.stopCamera();
         disconnect();
     }
 }
