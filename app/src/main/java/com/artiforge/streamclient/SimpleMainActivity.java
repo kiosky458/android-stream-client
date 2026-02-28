@@ -1,6 +1,7 @@
 package com.artiforge.streamclient;
 
 import android.Manifest;
+import android.content.Context;
 import android.content.pm.PackageManager;
 import android.os.Bundle;
 import android.os.Handler;
