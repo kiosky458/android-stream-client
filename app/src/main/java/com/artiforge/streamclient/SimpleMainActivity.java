@@ -57,10 +57,10 @@ public class SimpleMainActivity extends AppCompatActivity {
             
             // 初始化震動器（Android 12+ 使用新 API）
             if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.S) {
-                VibratorManager vibratorManager = (VibratorManager) getSystemService(VIBRATOR_SERVICE);
+                VibratorManager vibratorManager = (VibratorManager) getSystemService(Context.VIBRATOR_MANAGER_SERVICE);
                 vibrator = vibratorManager.getDefaultVibrator();
             } else {
-                vibrator = (Vibrator) getSystemService(VIBRATOR_SERVICE);
+                vibrator = (Vibrator) getSystemService(Context.VIBRATOR_SERVICE);
             }
             
             // 初始化 UI
