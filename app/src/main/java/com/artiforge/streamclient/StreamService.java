@@ -59,9 +59,10 @@ public class StreamService extends Service {
     private static final int NOTIFICATION_ID = 1;
     
     // 串流設定
-    private static final int STREAM_WIDTH = 768;
-    private static final int STREAM_HEIGHT = 1024;
-    private static final int STREAM_FPS = 15;
+    private static final int STREAM_WIDTH = 480;
+    private static final int STREAM_HEIGHT = 640;
+    private static final int STREAM_FPS = 10;
+    private static final int FRAME_INTERVAL_MS = 1000 / STREAM_FPS; // 100ms
     
     private final IBinder binder = new LocalBinder();
     
@@ -80,6 +81,8 @@ public class StreamService extends Service {
     
     // 串流狀態
     private boolean isStreaming = false;
+    private boolean streamingLock = false; // 防止重複指令
+    private long lastFrameTime = 0; // FPS 節流
     private OkHttpClient httpClient;
     
     // 日誌回調
@@ -272,6 +275,13 @@ public class StreamService extends Service {
             
             imageReader.setOnImageAvailableListener(reader -> {
                 if (isStreaming) {
+                    // FPS 節流：確保每秒最多 10 張
+                    long now = System.currentTimeMillis();
+                    if (now - lastFrameTime < FRAME_INTERVAL_MS) {
+                        return; // 跳過此影格
+                    }
+                    lastFrameTime = now;
+                    
                     Image image = reader.acquireLatestImage();
                     if (image != null) {
                         uploadFrame(imageToByteArray(image));
@@ -391,18 +401,32 @@ public class StreamService extends Service {
     // ========================================================================
 
     private void startStreaming() {
-        if (isStreaming) return;
+        // 防止重複指令
+        if (isStreaming || streamingLock) {
+            log("⚠️ 串流已在執行中，忽略重複指令");
+            return;
+        }
         
+        streamingLock = true;
         isStreaming = true;
+        lastFrameTime = 0; // 重置節流計時器
         updateNotification("串流中...");
         startPreview(); // 重新啟動預覽（加入 ImageReader）
         log("📹 開始串流");
+        
+        // 500ms 後解鎖（防止誤觸）
+        backgroundHandler.postDelayed(() -> streamingLock = false, 500);
     }
 
     private void stopStreaming() {
-        if (!isStreaming) return;
+        // 防止重複指令
+        if (!isStreaming) {
+            log("⚠️ 串流未啟動，忽略停止指令");
+            return;
+        }
         
         isStreaming = false;
+        streamingLock = false;
         updateNotification("已連接");
         startPreview(); // 重新啟動預覽（移除 ImageReader）
         log("⏹️ 停止串流");
@@ -438,19 +462,48 @@ public class StreamService extends Service {
     }
 
     // ========================================================================
-    // 震動功能
+    // 震動功能（透過通知）
     // ========================================================================
 
     private void vibrateDevice(int durationMs) {
-        Vibrator vibrator = (Vibrator) getSystemService(Context.VIBRATOR_SERVICE);
+        // Android 16 建議：透過通知觸發震動
+        NotificationManager manager = (NotificationManager) getSystemService(Context.NOTIFICATION_SERVICE);
         
-        if (vibrator != null && vibrator.hasVibrator()) {
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                vibrator.vibrate(VibrationEffect.createOneShot(
-                        durationMs, 
-                        VibrationEffect.DEFAULT_AMPLITUDE
-                ));
-            } else {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            // 建立震動通知頻道
+            NotificationChannel channel = new NotificationChannel(
+                    "vibrate_channel",
+                    "呼叫通知",
+                    NotificationManager.IMPORTANCE_HIGH
+            );
+            
+            // 設定震動模式
+            channel.enableVibration(true);
+            channel.setVibrationPattern(new long[]{0, durationMs});
+            
+            // 設定通知聲音（貓咪喵喵聲 - 使用系統預設）
+            channel.setSound(
+                    android.provider.Settings.System.DEFAULT_NOTIFICATION_URI,
+                    null
+            );
+            
+            manager.createNotificationChannel(channel);
+            
+            // 發送通知
+            Notification notification = new NotificationCompat.Builder(this, "vibrate_channel")
+                    .setContentTitle("📳 呼叫通知")
+                    .setContentText("遠端裝置正在呼叫...")
+                    .setSmallIcon(android.R.drawable.ic_lock_idle_alarm)
+                    .setPriority(NotificationCompat.PRIORITY_HIGH)
+                    .setAutoCancel(true)
+                    .build();
+            
+            manager.notify(999, notification);
+            
+        } else {
+            // Android 7 及以下：直接呼叫震動
+            Vibrator vibrator = (Vibrator) getSystemService(Context.VIBRATOR_SERVICE);
+            if (vibrator != null && vibrator.hasVibrator()) {
                 vibrator.vibrate(durationMs);
             }
         }
