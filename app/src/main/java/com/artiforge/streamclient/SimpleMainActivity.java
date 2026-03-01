@@ -1,8 +1,13 @@
 package com.artiforge.streamclient;
 
 import android.Manifest;
+import android.app.NotificationChannel;
+import android.app.NotificationManager;
+import android.app.PendingIntent;
 import android.content.Context;
+import android.content.Intent;
 import android.content.pm.PackageManager;
+import android.os.Build;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
@@ -17,6 +22,7 @@ import android.widget.Toast;
 import androidx.annotation.NonNull;
 import androidx.appcompat.app.AppCompatActivity;
 import androidx.core.app.ActivityCompat;
+import androidx.core.app.NotificationCompat;
 import androidx.core.content.ContextCompat;
 
 import org.json.JSONObject;
@@ -39,6 +45,9 @@ public class SimpleMainActivity extends AppCompatActivity {
     private TextView statusText;
     private TextView logText;
     
+    private static final String FOREGROUND_CHANNEL_ID = "stream_service";
+    private static final int FOREGROUND_NOTIFICATION_ID = 1001;
+    
     private Socket socket;
     private boolean isConnected = false;
     private Handler mainHandler;
@@ -46,6 +55,7 @@ public class SimpleMainActivity extends AppCompatActivity {
     private CameraStreamManager cameraManager;
     private okhttp3.OkHttpClient httpClient = null;
     private Runnable autoStopRunnable = null;
+    private NotificationManager notificationManager;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -55,6 +65,10 @@ public class SimpleMainActivity extends AppCompatActivity {
             setContentView(R.layout.activity_simple);
             
             mainHandler = new Handler(Looper.getMainLooper());
+            
+            // 初始化通知管理器
+            notificationManager = (NotificationManager) getSystemService(Context.NOTIFICATION_SERVICE);
+            createNotificationChannel();
             
             // 初始化震動器（Android 12+ 使用新 API）
             if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.S) {
@@ -163,6 +177,10 @@ public class SimpleMainActivity extends AppCompatActivity {
                 mainHandler.post(() -> {
                     appendLog("✅ 裝置註冊成功！");
                     
+                    // 啟動前景服務（保持相機權限）
+                    startForegroundService();
+                    appendLog("🔒 已啟動前景服務（防止系統停用相機）");
+                    
                     // 立即初始化相機（提前發現問題）
                     if (checkPermissions()) {
                         appendLog("📸 開始初始化相機系統...");
@@ -247,6 +265,10 @@ public class SimpleMainActivity extends AppCompatActivity {
             socket.close();
             socket = null;
         }
+        
+        // 停止前景服務
+        stopForegroundService();
+        appendLog("🔓 已停止前景服務");
         
         // 清理相機
         if (cameraManager != null) {
@@ -502,10 +524,52 @@ public class SimpleMainActivity extends AppCompatActivity {
         }
     }
     
+    private void createNotificationChannel() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            NotificationChannel channel = new NotificationChannel(
+                FOREGROUND_CHANNEL_ID,
+                "串流服務",
+                NotificationManager.IMPORTANCE_LOW
+            );
+            channel.setDescription("保持相機連接（防止系統停用）");
+            channel.setShowBadge(false);
+            notificationManager.createNotificationChannel(channel);
+        }
+    }
+    
+    private void startForegroundService() {
+        Intent notificationIntent = new Intent(this, SimpleMainActivity.class);
+        PendingIntent pendingIntent = PendingIntent.getActivity(
+            this, 
+            0, 
+            notificationIntent, 
+            PendingIntent.FLAG_IMMUTABLE
+        );
+        
+        NotificationCompat.Builder builder = new NotificationCompat.Builder(this, FOREGROUND_CHANNEL_ID)
+            .setSmallIcon(android.R.drawable.ic_menu_camera)
+            .setContentTitle("📹 串流服務運行中")
+            .setContentText("相機已就緒，等待串流指令")
+            .setPriority(NotificationCompat.PRIORITY_LOW)
+            .setOngoing(true)
+            .setContentIntent(pendingIntent);
+        
+        notificationManager.notify(FOREGROUND_NOTIFICATION_ID, builder.build());
+    }
+    
+    private void stopForegroundService() {
+        if (notificationManager != null) {
+            notificationManager.cancel(FOREGROUND_NOTIFICATION_ID);
+        }
+    }
+    
     @Override
     protected void onDestroy() {
         super.onDestroy();
-        cameraManager.stopCamera();
+        stopForegroundService();
+        if (cameraManager != null) {
+            cameraManager.stopCamera();
+        }
         disconnect();
     }
 }
