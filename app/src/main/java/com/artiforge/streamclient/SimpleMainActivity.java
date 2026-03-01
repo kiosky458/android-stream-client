@@ -68,11 +68,14 @@ public class SimpleMainActivity extends AppCompatActivity {
     
     // v1.2.5: 錯誤追蹤（自動回報到 Web 端）
     private String lastLogLine = "";
-    private String appVersion = "1.2.6";
+    private String appVersion = "1.2.7";
     
     // v1.2.6: 懸浮窗（解決後台相機限制）
     private WindowManager overlayWindowManager;
     private View overlayView;
+    
+    // v1.2.7: WAKE_LOCK（保持懸浮窗運行）
+    private PowerManager.WakeLock wakeLock;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -80,6 +83,16 @@ public class SimpleMainActivity extends AppCompatActivity {
         
         // v1.2.4: 保持屏幕常亮（防止锁屏后相机停止）
         getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
+        
+        // v1.2.7: 取得 WAKE_LOCK（保持 CPU 運行，防止懸浮窗被回收）
+        PowerManager powerManager = (PowerManager) getSystemService(Context.POWER_SERVICE);
+        if (powerManager != null) {
+            wakeLock = powerManager.newWakeLock(
+                PowerManager.PARTIAL_WAKE_LOCK,
+                "StreamClient::WakeLock"
+            );
+            wakeLock.acquire();
+        }
         
         try {
             setContentView(R.layout.activity_simple);
@@ -704,6 +717,7 @@ public class SimpleMainActivity extends AppCompatActivity {
     
     /**
      * v1.2.6: 請求懸浮窗權限（解決後台相機限制）
+     * v1.2.7: 延遲創建懸浮窗（等待前景服務完全啟動）
      */
     private void requestOverlayPermission() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
@@ -720,7 +734,8 @@ public class SimpleMainActivity extends AppCompatActivity {
                 }
             } else {
                 appendLog("✅ 懸浮窗權限已授予");
-                createOverlayWindow();
+                // v1.2.7: 延遲 2 秒創建（等待前景服務完全啟動）
+                mainHandler.postDelayed(() -> createOverlayWindow(), 2000);
             }
         }
     }
@@ -793,7 +808,8 @@ public class SimpleMainActivity extends AppCompatActivity {
         if (requestCode == REQUEST_OVERLAY_PERMISSION) {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M && Settings.canDrawOverlays(this)) {
                 appendLog("✅ 懸浮窗權限已授予");
-                createOverlayWindow();
+                // v1.2.7: 延遲 2 秒創建（等待前景服務完全啟動）
+                mainHandler.postDelayed(() -> createOverlayWindow(), 2000);
             } else {
                 appendLog("⚠️ 需要懸浮窗權限才能後台串流");
             }
@@ -804,6 +820,13 @@ public class SimpleMainActivity extends AppCompatActivity {
     protected void onDestroy() {
         super.onDestroy();
         removeOverlayWindow(); // v1.2.6: 清理懸浮窗
+        
+        // v1.2.7: 釋放 WAKE_LOCK
+        if (wakeLock != null && wakeLock.isHeld()) {
+            wakeLock.release();
+            wakeLock = null;
+        }
+        
         stopForegroundService();
         if (cameraManager != null) {
             cameraManager.stopCamera();

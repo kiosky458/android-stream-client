@@ -1,7 +1,10 @@
 package com.artiforge.streamclient;
 
 import android.content.Context;
+import android.graphics.Bitmap;
+import android.graphics.BitmapFactory;
 import android.graphics.ImageFormat;
+import android.graphics.Matrix;
 import android.graphics.Rect;
 import android.graphics.YuvImage;
 import android.hardware.camera2.CameraAccessException;
@@ -437,8 +440,12 @@ public class CameraStreamManager {
         stopBackgroundThread();
     }
     
+    /**
+     * v1.2.7: YUV 轉 JPEG + 逆時針旋轉 90 度（直立格式 480x640）
+     */
     private byte[] convertYUVtoJPEG(Image image) {
         try {
+            // 1. YUV → JPEG（橫向 640x480）
             ByteBuffer yBuffer = image.getPlanes()[0].getBuffer();
             ByteBuffer uBuffer = image.getPlanes()[1].getBuffer();
             ByteBuffer vBuffer = image.getPlanes()[2].getBuffer();
@@ -454,10 +461,34 @@ public class CameraStreamManager {
             uBuffer.get(nv21, ySize + vSize, uSize);
             
             YuvImage yuvImage = new YuvImage(nv21, ImageFormat.NV21, image.getWidth(), image.getHeight(), null);
-            ByteArrayOutputStream out = new ByteArrayOutputStream();
-            yuvImage.compressToJpeg(new Rect(0, 0, image.getWidth(), image.getHeight()), 85, out);
+            ByteArrayOutputStream tempOut = new ByteArrayOutputStream();
+            yuvImage.compressToJpeg(new Rect(0, 0, image.getWidth(), image.getHeight()), 85, tempOut);
+            byte[] jpegData = tempOut.toByteArray();
             
-            return out.toByteArray();
+            // 2. JPEG → Bitmap
+            Bitmap bitmap = BitmapFactory.decodeByteArray(jpegData, 0, jpegData.length);
+            if (bitmap == null) {
+                throw new Exception("無法解碼 JPEG 為 Bitmap");
+            }
+            
+            // 3. 逆時針旋轉 90 度（橫向 640x480 → 直立 480x640）
+            Matrix matrix = new Matrix();
+            matrix.postRotate(-90); // 逆時針 90 度
+            
+            Bitmap rotatedBitmap = Bitmap.createBitmap(
+                bitmap, 0, 0, 
+                bitmap.getWidth(), bitmap.getHeight(), 
+                matrix, true
+            );
+            bitmap.recycle(); // 釋放原始 Bitmap
+            
+            // 4. Bitmap → JPEG
+            ByteArrayOutputStream finalOut = new ByteArrayOutputStream();
+            rotatedBitmap.compress(Bitmap.CompressFormat.JPEG, 85, finalOut);
+            rotatedBitmap.recycle(); // 釋放旋轉後的 Bitmap
+            
+            return finalOut.toByteArray();
+            
         } catch (Exception e) {
             if (frameCallback != null) {
                 frameCallback.onError("❌ YUV→JPEG 錯誤: " + e.getMessage());
