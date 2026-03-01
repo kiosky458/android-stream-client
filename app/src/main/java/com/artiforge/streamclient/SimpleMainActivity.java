@@ -104,7 +104,12 @@ public class SimpleMainActivity extends AppCompatActivity {
             }
             
             appendLog("✅ App 啟動成功！");
-            appendLog("版本: 1.0.4 (Android 16 優化版)");
+            try {
+                String versionName = getPackageManager().getPackageInfo(getPackageName(), 0).versionName;
+                appendLog("版本: " + versionName + " (HTTPS + 480p @ 10fps)");
+            } catch (Exception e) {
+                appendLog("版本: 1.1.0 (HTTPS + 480p @ 10fps)");
+            }
             appendLog("請輸入伺服器網址並點擊連接");
             
         } catch (Exception e) {
