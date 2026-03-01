@@ -307,37 +307,56 @@ public class SimpleMainActivity extends AppCompatActivity {
     
     private void doVibrate() {
         try {
-            appendLog("🔍 檢查震動器...");
-            appendLog("   Android 版本: " + android.os.Build.VERSION.SDK_INT);
+            appendLog("📳 發送呼叫通知...");
             
-            if (vibrator == null) {
-                appendLog("❌ 震動器為 null");
+            // 使用通知聲音（手機震動模式下會自動震動）
+            android.app.NotificationManager notificationManager = 
+                (android.app.NotificationManager) getSystemService(Context.NOTIFICATION_SERVICE);
+            
+            if (notificationManager == null) {
+                appendLog("❌ 無法取得 NotificationManager");
                 return;
             }
             
-            appendLog("   震動器存在: " + vibrator.hasVibrator());
+            String channelId = "call_notification";
             
-            if (vibrator.hasVibrator()) {
-                if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
-                    // Android 8.0+ 使用 VibrationEffect
-                    VibrationEffect effect = VibrationEffect.createOneShot(
-                        1000,  // 加長到 1 秒更明顯
-                        255    // 最大強度
-                    );
-                    vibrator.vibrate(effect);
-                    appendLog("✅ 震動執行完成 (VibrationEffect API, 1000ms)");
-                } else {
-                    // 舊版 API
-                    vibrator.vibrate(1000);
-                    appendLog("✅ 震動執行完成 (Legacy API, 1000ms)");
-                }
-            } else {
-                appendLog("⚠️ 裝置不支援震動");
+            // Android 8.0+ 需要建立通知頻道
+            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
+                android.app.NotificationChannel channel = new android.app.NotificationChannel(
+                    channelId,
+                    "呼叫通知",
+                    android.app.NotificationManager.IMPORTANCE_HIGH
+                );
+                
+                // 設定通知聲音（使用系統預設）
+                channel.setSound(
+                    android.provider.Settings.System.DEFAULT_NOTIFICATION_URI,
+                    null
+                );
+                
+                // 啟用震動（手機震動模式下會震動）
+                channel.enableVibration(true);
+                channel.setVibrationPattern(new long[]{0, 500, 200, 500});
+                
+                notificationManager.createNotificationChannel(channel);
             }
-        } catch (SecurityException e) {
-            appendLog("❌ 震動權限被拒絕: " + e.getMessage());
+            
+            // 建立通知
+            androidx.core.app.NotificationCompat.Builder builder = 
+                new androidx.core.app.NotificationCompat.Builder(this, channelId)
+                    .setSmallIcon(android.R.drawable.ic_dialog_info)
+                    .setContentTitle("📞 遠端呼叫")
+                    .setContentText("控制台正在呼叫您")
+                    .setPriority(androidx.core.app.NotificationCompat.PRIORITY_HIGH)
+                    .setAutoCancel(true)
+                    .setDefaults(androidx.core.app.NotificationCompat.DEFAULT_ALL);
+            
+            // 發送通知
+            notificationManager.notify(999, builder.build());
+            appendLog("✅ 通知已發送（手機震動模式下會震動）");
+            
         } catch (Exception e) {
-            appendLog("❌ 震動失敗: " + e.getMessage());
+            appendLog("❌ 通知失敗: " + e.getMessage());
             e.printStackTrace();
         }
     }
