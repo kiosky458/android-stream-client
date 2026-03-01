@@ -43,8 +43,8 @@
         android:id="@+id/serverUrlInput"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:hint="http://59.125.35.234"
-        android:text="http://59.125.35.234"
+        android:hint="https://artiforge.studio"
+        android:text="https://artiforge.studio"
         android:inputType="textUri"
         android:padding="12dp"
         android:textSize="16sp"
@@ -83,7 +83,9 @@
             android:padding="12dp"
             android:textSize="12sp"
             android:fontFamily="monospace"
-            android:textColor="#00AA00"/>
+            android:textColor="#00AA00"
+            android:textIsSelectable="true"
+            android:longClickable="true"/>
     </ScrollView>
 
 </LinearLayout>

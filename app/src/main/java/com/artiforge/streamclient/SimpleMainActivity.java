@@ -129,7 +129,17 @@ public class SimpleMainActivity extends AppCompatActivity {
         appendLog("正在連接: " + serverUrl);
         
         try {
-            socket = IO.socket(serverUrl);
+            // Socket.IO 配置（適應 HTTPS）
+            IO.Options options = new IO.Options();
+            options.transports = new String[] {"websocket", "polling"};
+            options.reconnection = true;
+            options.reconnectionDelay = 1000;
+            options.reconnectionAttempts = 5;
+            options.timeout = 20000;
+            options.forceNew = true;
+            options.secure = serverUrl.startsWith("https");
+            
+            socket = IO.socket(serverUrl, options);
             
             socket.on(Socket.EVENT_CONNECT, args -> {
                 mainHandler.post(() -> {
@@ -165,8 +175,27 @@ public class SimpleMainActivity extends AppCompatActivity {
             
             socket.on(Socket.EVENT_CONNECT_ERROR, args -> {
                 mainHandler.post(() -> {
-                    String error = args.length > 0 ? args[0].toString() : "未知錯誤";
-                    appendLog("❌ 連接錯誤: " + error);
+                    if (args.length > 0) {
+                        Object errorObj = args[0];
+                        String errorDetail = "";
+                        
+                        // 詳細錯誤訊息
+                        if (errorObj instanceof Exception) {
+                            Exception e = (Exception) errorObj;
+                            errorDetail = e.getClass().getSimpleName() + ": " + e.getMessage();
+                            
+                            // 更詳細的堆疊追蹤
+                            if (e.getCause() != null) {
+                                errorDetail += "\n原因: " + e.getCause().getMessage();
+                            }
+                        } else {
+                            errorDetail = errorObj.toString();
+                        }
+                        
+                        appendLog("❌ 連接錯誤: " + errorDetail);
+                    } else {
+                        appendLog("❌ 連接錯誤: 未知錯誤");
+                    }
                     
                     // 停止相機串流（如果正在運行）
                     if (cameraManager != null) {
