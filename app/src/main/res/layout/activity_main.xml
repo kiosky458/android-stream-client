@@ -51,7 +51,7 @@
             android:layout_height="wrap_content"
             android:hint="@string/server_url_hint"
             android:inputType="textUri"
-            android:text="http://59.125.35.234"
+            android:text="https://artiforge.studio"
             android:textColor="#FFFFFF"
             android:textColorHint="#888888"
             android:backgroundTint="#FFFFFF" />
