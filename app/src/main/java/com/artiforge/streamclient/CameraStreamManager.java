@@ -78,9 +78,9 @@ public class CameraStreamManager {
                 frameCallback.onInfo("📋 支援格式數: " + formats.length);
             }
             
-            // 改用 JPEG 格式（更穩定，相容性更好）
+            // 使用 YUV_420_888（PREVIEW 模板的正確格式）
             Size[] sizes = characteristics.get(CameraCharacteristics.SCALER_STREAM_CONFIGURATION_MAP)
-                    .getOutputSizes(ImageFormat.JPEG);
+                    .getOutputSizes(ImageFormat.YUV_420_888);
             
             if (frameCallback != null) {
                 frameCallback.onInfo("📐 可用解析度數: " + sizes.length);
@@ -124,7 +124,7 @@ public class CameraStreamManager {
             imageReader = ImageReader.newInstance(
                 selectedSize.getWidth(),
                 selectedSize.getHeight(),
-                ImageFormat.JPEG,
+                ImageFormat.YUV_420_888,
                 2
             );
             
@@ -146,10 +146,8 @@ public class CameraStreamManager {
                 
                 Image image = reader.acquireLatestImage();
                 if (image != null) {
-                    // JPEG 格式：直接讀取 bytes
-                    ByteBuffer buffer = image.getPlanes()[0].getBuffer();
-                    byte[] jpegData = new byte[buffer.remaining()];
-                    buffer.get(jpegData);
+                    // YUV 格式：轉換為 JPEG
+                    byte[] jpegData = convertYUVtoJPEG(image);
                     image.close();
                     
                     if (jpegData != null && jpegData.length > 0 && frameCallback != null) {
@@ -204,7 +202,7 @@ public class CameraStreamManager {
                             errorMsg += "已達相機使用上限\n解決: 關閉其他使用相機的 App";
                             break;
                         case CameraDevice.StateCallback.ERROR_CAMERA_DISABLED:
-                            errorMsg += "相機被系統停用（可能使用錯誤模板）\n⚠️ 嘗試自動恢復...";
+                            errorMsg += "相機被系統停用（格式/模板不相容）\n⚠️ 嘗試自動恢復...";
                             canRetry = true;  // 錯誤 3 可以嘗試恢復
                             break;
                         case CameraDevice.StateCallback.ERROR_CAMERA_DEVICE:
@@ -337,17 +335,14 @@ public class CameraStreamManager {
             builder.set(CaptureRequest.CONTROL_VIDEO_STABILIZATION_MODE, 
                        CaptureRequest.CONTROL_VIDEO_STABILIZATION_MODE_ON);
             
-            // JPEG 品質
-            builder.set(CaptureRequest.JPEG_QUALITY, (byte) 85);
-            
             if (frameCallback != null) {
-                frameCallback.onInfo("📤 發送預覽請求（PREVIEW 模板）...");
+                frameCallback.onInfo("📤 發送預覽請求（PREVIEW 模板 + YUV 格式）...");
             }
             
             captureSession.setRepeatingRequest(builder.build(), null, backgroundHandler);
             
             if (frameCallback != null) {
-                frameCallback.onInfo("✅ 相機預覽已啟動（待命中，不會自動停用）");
+                frameCallback.onInfo("✅ 相機預覽已啟動（PREVIEW + YUV，系統相容）");
             }
             
         } catch (CameraAccessException e) {
@@ -390,7 +385,7 @@ public class CameraStreamManager {
         isStreaming = true;
         
         if (frameCallback != null) {
-            frameCallback.onInfo("✅ 串流已啟動 (JPEG, 10 FPS)");
+            frameCallback.onInfo("✅ 串流已啟動 (YUV→JPEG, 10 FPS)");
         }
     }
     
