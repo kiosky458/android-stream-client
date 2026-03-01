@@ -412,8 +412,12 @@ public class SimpleMainActivity extends AppCompatActivity {
             
             if (allGranted) {
                 appendLog("✅ 所有權限已授予");
+                // v1.2.8: 權限授予後自動連線
+                appendLog("🔄 開始自動連線...");
+                connect();
             } else {
                 appendLog("⚠️ 部分權限被拒絕，功能可能受限");
+                appendLog("⚠️ 建議授予所有權限後重啟 App");
             }
         }
     }
