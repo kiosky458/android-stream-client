@@ -60,6 +60,10 @@ public class SimpleMainActivity extends AppCompatActivity {
     private okhttp3.OkHttpClient httpClient = null;
     private Runnable autoStopRunnable = null;
     private NotificationManager notificationManager;
+    
+    // v1.2.5: 錯誤追蹤（自動回報到 Web 端）
+    private String lastLogLine = "";
+    private String appVersion = "1.2.5";
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -305,7 +309,7 @@ public class SimpleMainActivity extends AppCompatActivity {
     }
     
     private void appendLog(String message) {
-        // v1.2.4: 日志过滤 - 只显示重要信息（减少轰炸）
+        // v1.2.4: 日誌過濾 - 只顯示重要資訊（減少轟炸）
         boolean shouldLog = message.contains("✅") || message.contains("❌") || 
                            message.contains("⚠️") || message.contains("📤") || 
                            message.contains("📊") || message.contains("🔒") ||
@@ -319,14 +323,37 @@ public class SimpleMainActivity extends AppCompatActivity {
                            message.contains("失敗");
         
         if (!shouldLog) {
-            return; // 跳过不重要的日志
+            return; // 跳過不重要的日誌
         }
+        
+        // v1.2.5: 檢測錯誤並自動回報到 Web 端
+        if (message.contains("❌") || message.contains("錯誤") || message.contains("失敗")) {
+            reportErrorToWeb(message);
+        }
+        
+        // 儲存最後一行（用於錯誤上下文）
+        lastLogLine = message;
         
         mainHandler.post(() -> {
             String current = logText.getText().toString();
             String timestamp = new java.text.SimpleDateFormat("HH:mm:ss", java.util.Locale.getDefault())
                     .format(new java.util.Date());
-            logText.setText(current + "\n[" + timestamp + "] " + message);
+            String newLog = "[" + timestamp + "] " + message;
+            
+            // v1.2.5: 限制日誌為 30 條（自動清理舊日誌）
+            String[] lines = current.split("\n");
+            if (lines.length >= 30) {
+                // 保留最新 29 條，加上新的這條 = 30 條
+                StringBuilder sb = new StringBuilder();
+                for (int i = Math.max(0, lines.length - 29); i < lines.length; i++) {
+                    if (!lines[i].trim().isEmpty()) {
+                        sb.append(lines[i]).append("\n");
+                    }
+                }
+                current = sb.toString();
+            }
+            
+            logText.setText(current + newLog + "\n");
             
             // 自動捲動到底部
             final android.widget.ScrollView scrollView = findViewById(R.id.logScrollView);
@@ -558,9 +585,7 @@ public class SimpleMainActivity extends AppCompatActivity {
                     
                     if (response.isSuccessful()) {
                         uploadSuccess++;
-                        if (frameNum == 1 || frameNum % 10 == 0) {
-                            mainHandler.post(() -> appendLog("📤 上傳成功 #" + frameNum + ": " + jpegData.length + " bytes (" + elapsed + "ms)"));
-                        }
+                        // v1.2.5: 移除上傳成功日誌（減少轟炸）
                     } else {
                         uploadFail++;
                         mainHandler.post(() -> appendLog("❌ 上傳失敗 #" + frameNum + ": HTTP " + response.code()));
@@ -617,6 +642,27 @@ public class SimpleMainActivity extends AppCompatActivity {
     private void stopForegroundService() {
         if (notificationManager != null) {
             notificationManager.cancel(FOREGROUND_NOTIFICATION_ID);
+        }
+    }
+    
+    /**
+     * v1.2.5: 自動回報錯誤到 Web 端（方便診斷）
+     */
+    private void reportErrorToWeb(String errorMessage) {
+        if (socket == null || !socket.connected()) {
+            return; // 未連接，無法回報
+        }
+        
+        try {
+            JSONObject errorReport = new JSONObject();
+            errorReport.put("version", appVersion);
+            errorReport.put("context", lastLogLine); // 錯誤的上一行
+            errorReport.put("error", errorMessage);   // 錯誤訊息
+            errorReport.put("timestamp", System.currentTimeMillis());
+            
+            socket.emit("error_report", errorReport);
+        } catch (Exception e) {
+            // 靜默失敗（避免錯誤回報本身造成錯誤）
         }
     }
     
