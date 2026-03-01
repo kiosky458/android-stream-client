@@ -7,13 +7,17 @@ import android.app.PendingIntent;
 import android.content.Context;
 import android.content.Intent;
 import android.content.pm.PackageManager;
+import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
+import android.os.PowerManager;
 import android.os.VibrationEffect;
 import android.os.Vibrator;
 import android.os.VibratorManager;
+import android.provider.Settings;
+import android.view.WindowManager;
 import android.widget.Button;
 import android.widget.EditText;
 import android.widget.TextView;
@@ -60,6 +64,9 @@ public class SimpleMainActivity extends AppCompatActivity {
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
+        
+        // v1.2.4: 保持屏幕常亮（防止锁屏后相机停止）
+        getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
         
         try {
             setContentView(R.layout.activity_simple);
@@ -181,6 +188,9 @@ public class SimpleMainActivity extends AppCompatActivity {
                     startForegroundService();
                     appendLog("🔒 已啟動前景服務（防止系統停用相機）");
                     
+                    // v1.2.4: 請求電池優化豁免（後台執行）
+                    requestBatteryOptimizationExemption();
+                    
                     // 立即初始化相機（提前發現問題）
                     if (checkPermissions()) {
                         appendLog("📸 開始初始化相機系統...");
@@ -295,6 +305,23 @@ public class SimpleMainActivity extends AppCompatActivity {
     }
     
     private void appendLog(String message) {
+        // v1.2.4: 日志过滤 - 只显示重要信息（减少轰炸）
+        boolean shouldLog = message.contains("✅") || message.contains("❌") || 
+                           message.contains("⚠️") || message.contains("📤") || 
+                           message.contains("📊") || message.contains("🔒") ||
+                           message.contains("⚡") || message.contains("📸") ||
+                           message.contains("📹") || message.contains("⏹") ||
+                           message.contains("🎬") || message.contains("🔓") ||
+                           message.contains("启动") || message.contains("停止") || 
+                           message.contains("初始化") || message.contains("成功") ||
+                           message.contains("失败") || message.contains("错误") ||
+                           message.contains("啟動") || message.contains("錯誤") ||
+                           message.contains("失敗");
+        
+        if (!shouldLog) {
+            return; // 跳过不重要的日志
+        }
+        
         mainHandler.post(() -> {
             String current = logText.getText().toString();
             String timestamp = new java.text.SimpleDateFormat("HH:mm:ss", java.util.Locale.getDefault())
@@ -590,6 +617,30 @@ public class SimpleMainActivity extends AppCompatActivity {
     private void stopForegroundService() {
         if (notificationManager != null) {
             notificationManager.cancel(FOREGROUND_NOTIFICATION_ID);
+        }
+    }
+    
+    /**
+     * v1.2.4: 請求電池優化豁免（允許後台執行）
+     */
+    private void requestBatteryOptimizationExemption() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+            PowerManager pm = (PowerManager) getSystemService(Context.POWER_SERVICE);
+            String packageName = getPackageName();
+            
+            if (pm != null && !pm.isIgnoringBatteryOptimizations(packageName)) {
+                try {
+                    Intent intent = new Intent();
+                    intent.setAction(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS);
+                    intent.setData(Uri.parse("package:" + packageName));
+                    startActivity(intent);
+                    appendLog("⚡ 請允許「不受電池優化限制」以實現後台串流");
+                } catch (Exception e) {
+                    appendLog("⚠️ 無法請求電池優化豁免: " + e.getMessage());
+                }
+            } else {
+                appendLog("✅ 電池優化已豁免（可後台執行）");
+            }
         }
     }
     
