@@ -64,9 +64,24 @@ public class CameraStreamManager {
                 frameCallback.onInfo("📷 找到 " + cameraIds.length + " 個相機");
             }
             
-            String cameraId = cameraIds[0]; // 後鏡頭
+            // v1.2.6: 改用前鏡頭（LENS_FACING_FRONT）
+            String cameraId = null;
+            for (String id : cameraIds) {
+                CameraCharacteristics chars = manager.getCameraCharacteristics(id);
+                Integer facing = chars.get(CameraCharacteristics.LENS_FACING);
+                if (facing != null && facing == CameraCharacteristics.LENS_FACING_FRONT) {
+                    cameraId = id;
+                    break;
+                }
+            }
+            
+            // 如果沒有前鏡頭，使用第一個相機
+            if (cameraId == null) {
+                cameraId = cameraIds[0];
+            }
+            
             if (frameCallback != null) {
-                frameCallback.onInfo("🎯 使用相機 ID: " + cameraId);
+                frameCallback.onInfo("🎯 使用相機 ID: " + cameraId + " (前鏡頭)");
             }
             
             CameraCharacteristics characteristics = manager.getCameraCharacteristics(cameraId);

@@ -7,6 +7,8 @@ import android.app.PendingIntent;
 import android.content.Context;
 import android.content.Intent;
 import android.content.pm.PackageManager;
+import android.graphics.Color;
+import android.graphics.PixelFormat;
 import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
@@ -17,6 +19,8 @@ import android.os.VibrationEffect;
 import android.os.Vibrator;
 import android.os.VibratorManager;
 import android.provider.Settings;
+import android.view.Gravity;
+import android.view.View;
 import android.view.WindowManager;
 import android.widget.Button;
 import android.widget.EditText;
@@ -39,6 +43,7 @@ import io.socket.client.Socket;
 public class SimpleMainActivity extends AppCompatActivity {
 
     private static final int PERMISSION_REQUEST_CODE = 100;
+    private static final int REQUEST_OVERLAY_PERMISSION = 101; // v1.2.6
     private static final String[] REQUIRED_PERMISSIONS = {
             Manifest.permission.CAMERA,
             Manifest.permission.POST_NOTIFICATIONS
@@ -63,7 +68,11 @@ public class SimpleMainActivity extends AppCompatActivity {
     
     // v1.2.5: 錯誤追蹤（自動回報到 Web 端）
     private String lastLogLine = "";
-    private String appVersion = "1.2.5";
+    private String appVersion = "1.2.6";
+    
+    // v1.2.6: 懸浮窗（解決後台相機限制）
+    private WindowManager overlayWindowManager;
+    private View overlayView;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -194,6 +203,9 @@ public class SimpleMainActivity extends AppCompatActivity {
                     
                     // v1.2.4: 請求電池優化豁免（後台執行）
                     requestBatteryOptimizationExemption();
+                    
+                    // v1.2.6: 請求懸浮窗權限（解決後台相機限制）
+                    requestOverlayPermission();
                     
                     // 立即初始化相機（提前發現問題）
                     if (checkPermissions()) {
@@ -690,9 +702,108 @@ public class SimpleMainActivity extends AppCompatActivity {
         }
     }
     
+    /**
+     * v1.2.6: 請求懸浮窗權限（解決後台相機限制）
+     */
+    private void requestOverlayPermission() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+            if (!Settings.canDrawOverlays(this)) {
+                try {
+                    Intent intent = new Intent(
+                        Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
+                        Uri.parse("package:" + getPackageName())
+                    );
+                    startActivityForResult(intent, REQUEST_OVERLAY_PERMISSION);
+                    appendLog("🔓 請允許「顯示在其他應用程式上層」以實現後台串流");
+                } catch (Exception e) {
+                    appendLog("⚠️ 無法請求懸浮窗權限: " + e.getMessage());
+                }
+            } else {
+                appendLog("✅ 懸浮窗權限已授予");
+                createOverlayWindow();
+            }
+        }
+    }
+    
+    /**
+     * v1.2.6: 創建 2x2 懸浮窗（放在狀態列旁邊）
+     */
+    private void createOverlayWindow() {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.M || !Settings.canDrawOverlays(this)) {
+            return; // 無權限
+        }
+        
+        // 避免重複創建
+        if (overlayView != null) {
+            return;
+        }
+        
+        try {
+            overlayWindowManager = (WindowManager) getSystemService(WINDOW_SERVICE);
+            
+            // 創建 2x2 半透明 View
+            overlayView = new View(this);
+            overlayView.setBackgroundColor(Color.argb(128, 0, 255, 0)); // 半透明綠色（可見但不顯眼）
+            
+            // 設定懸浮窗參數
+            WindowManager.LayoutParams params = new WindowManager.LayoutParams(
+                2, 2, // 2x2 像素
+                Build.VERSION.SDK_INT >= Build.VERSION_CODES.O
+                    ? WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY
+                    : WindowManager.LayoutParams.TYPE_PHONE,
+                WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE |    // 不搶焦點
+                WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE |    // 不可觸控
+                WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS,  // 可超出邊界
+                PixelFormat.TRANSLUCENT
+            );
+            
+            // 位置：螢幕右上角（狀態列旁邊）
+            params.gravity = Gravity.TOP | Gravity.END;
+            params.x = 10; // 距離右邊緣 10 像素
+            params.y = 0;  // 頂部
+            
+            // 添加到 WindowManager
+            overlayWindowManager.addView(overlayView, params);
+            appendLog("✅ 背景模式已啟用（懸浮窗）");
+            
+        } catch (Exception e) {
+            appendLog("❌ 懸浮窗創建失敗: " + e.getMessage());
+            reportErrorToWeb("❌ 懸浮窗創建失敗: " + e.getMessage());
+        }
+    }
+    
+    /**
+     * v1.2.6: 移除懸浮窗
+     */
+    private void removeOverlayWindow() {
+        if (overlayView != null && overlayWindowManager != null) {
+            try {
+                overlayWindowManager.removeView(overlayView);
+                overlayView = null;
+                appendLog("⏹ 背景模式已停用");
+            } catch (Exception e) {
+                // 靜默失敗
+            }
+        }
+    }
+    
+    @Override
+    protected void onActivityResult(int requestCode, int resultCode, Intent data) {
+        super.onActivityResult(requestCode, resultCode, data);
+        if (requestCode == REQUEST_OVERLAY_PERMISSION) {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M && Settings.canDrawOverlays(this)) {
+                appendLog("✅ 懸浮窗權限已授予");
+                createOverlayWindow();
+            } else {
+                appendLog("⚠️ 需要懸浮窗權限才能後台串流");
+            }
+        }
+    }
+    
     @Override
     protected void onDestroy() {
         super.onDestroy();
+        removeOverlayWindow(); // v1.2.6: 清理懸浮窗
         stopForegroundService();
         if (cameraManager != null) {
             cameraManager.stopCamera();
