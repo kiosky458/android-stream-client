@@ -162,6 +162,14 @@ public class SimpleMainActivity extends AppCompatActivity {
             socket.on("registered", args -> {
                 mainHandler.post(() -> {
                     appendLog("✅ 裝置註冊成功！");
+                    
+                    // 立即初始化相機（提前發現問題）
+                    if (checkPermissions()) {
+                        appendLog("📸 開始初始化相機系統...");
+                        initializeCamera();
+                    } else {
+                        appendLog("⚠️ 缺少相機權限，請授予權限後重新連接");
+                    }
                 });
             });
             
@@ -239,6 +247,14 @@ public class SimpleMainActivity extends AppCompatActivity {
             socket.close();
             socket = null;
         }
+        
+        // 清理相機
+        if (cameraManager != null) {
+            appendLog("📸 關閉相機...");
+            cameraManager.stopCamera();
+            cameraManager = null;
+        }
+        
         isConnected = false;
         updateUI();
         appendLog("🔌 已斷線");
@@ -361,6 +377,36 @@ public class SimpleMainActivity extends AppCompatActivity {
         }
     }
     
+    private void initializeCamera() {
+        try {
+            if (cameraManager == null) {
+                cameraManager = new CameraStreamManager(this);
+                cameraManager.setFrameCallback(new CameraStreamManager.FrameCallback() {
+                    @Override
+                    public void onFrameAvailable(byte[] jpegData) {
+                        uploadFrame(jpegData);
+                    }
+                    
+                    @Override
+                    public void onError(String error) {
+                        mainHandler.post(() -> appendLog("❌ 相機錯誤: " + error));
+                    }
+                    
+                    @Override
+                    public void onInfo(String message) {
+                        mainHandler.post(() -> appendLog(message));
+                    }
+                });
+            }
+            
+            appendLog("📸 正在初始化相機...");
+            cameraManager.startCamera();
+            
+        } catch (Exception e) {
+            appendLog("❌ 相機初始化失敗: " + e.getMessage());
+        }
+    }
+    
     private void startCameraStream() {
         try {
             // 取消之前的自動停止
@@ -368,9 +414,20 @@ public class SimpleMainActivity extends AppCompatActivity {
                 mainHandler.removeCallbacks(autoStopRunnable);
             }
             
-            appendLog("📹 啟動相機串流（10 秒）...");
-            cameraManager.startCamera();
-            appendLog("⏳ 等待相機就緒...");
+            if (cameraManager == null) {
+                appendLog("⚠️ 相機未初始化，嘗試重新初始化...");
+                initializeCamera();
+                // 等待初始化完成後再啟動串流
+                mainHandler.postDelayed(() -> {
+                    if (cameraManager != null) {
+                        cameraManager.startStreaming();
+                    }
+                }, 2000);
+                return;
+            }
+            
+            appendLog("📹 啟動串流上傳（10 秒）...");
+            cameraManager.startStreaming();
             
             // 設定 10 秒後自動停止
             autoStopRunnable = new Runnable() {
@@ -383,7 +440,7 @@ public class SimpleMainActivity extends AppCompatActivity {
             mainHandler.postDelayed(autoStopRunnable, 10000);
             
         } catch (Exception e) {
-            appendLog("❌ 相機啟動失敗: " + e.getMessage());
+            appendLog("❌ 啟動串流失敗: " + e.getMessage());
         }
     }
     
