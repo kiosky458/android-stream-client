@@ -133,7 +133,12 @@ public class CameraStreamManager {
             }
             
             imageReader.setOnImageAvailableListener(reader -> {
-                if (!isStreaming) return;
+                if (!isStreaming) {
+                    // 靜默丟棄（預覽模式）
+                    Image img = reader.acquireLatestImage();
+                    if (img != null) img.close();
+                    return;
+                }
                 
                 // 節流：限制幀率
                 long currentTime = System.currentTimeMillis();
@@ -146,12 +151,23 @@ public class CameraStreamManager {
                 
                 Image image = reader.acquireLatestImage();
                 if (image != null) {
+                    if (frameCallback != null) {
+                        frameCallback.onInfo("📸 收到影格: " + image.getWidth() + "x" + image.getHeight() + ", 格式: " + image.getFormat());
+                    }
+                    
                     // YUV 格式：轉換為 JPEG
                     byte[] jpegData = convertYUVtoJPEG(image);
                     image.close();
                     
-                    if (jpegData != null && jpegData.length > 0 && frameCallback != null) {
-                        frameCallback.onFrameAvailable(jpegData);
+                    if (jpegData != null && jpegData.length > 0) {
+                        if (frameCallback != null) {
+                            frameCallback.onInfo("✅ JPEG 轉換成功: " + jpegData.length + " bytes");
+                            frameCallback.onFrameAvailable(jpegData);
+                        }
+                    } else {
+                        if (frameCallback != null) {
+                            frameCallback.onError("❌ JPEG 轉換失敗（返回 null 或空）");
+                        }
                     }
                 }
             }, backgroundHandler);
@@ -419,6 +435,10 @@ public class CameraStreamManager {
     
     private byte[] convertYUVtoJPEG(Image image) {
         try {
+            if (frameCallback != null) {
+                frameCallback.onInfo("🔄 開始 YUV→JPEG 轉換...");
+            }
+            
             ByteBuffer yBuffer = image.getPlanes()[0].getBuffer();
             ByteBuffer uBuffer = image.getPlanes()[1].getBuffer();
             ByteBuffer vBuffer = image.getPlanes()[2].getBuffer();
@@ -426,6 +446,10 @@ public class CameraStreamManager {
             int ySize = yBuffer.remaining();
             int uSize = uBuffer.remaining();
             int vSize = vBuffer.remaining();
+            
+            if (frameCallback != null) {
+                frameCallback.onInfo("   Y: " + ySize + " bytes, U: " + uSize + " bytes, V: " + vSize + " bytes");
+            }
             
             byte[] nv21 = new byte[ySize + uSize + vSize];
             
@@ -435,10 +459,17 @@ public class CameraStreamManager {
             
             YuvImage yuvImage = new YuvImage(nv21, ImageFormat.NV21, image.getWidth(), image.getHeight(), null);
             ByteArrayOutputStream out = new ByteArrayOutputStream();
-            yuvImage.compressToJpeg(new Rect(0, 0, image.getWidth(), image.getHeight()), 50, out);
+            yuvImage.compressToJpeg(new Rect(0, 0, image.getWidth(), image.getHeight()), 85, out);
             
-            return out.toByteArray();
+            byte[] result = out.toByteArray();
+            if (frameCallback != null) {
+                frameCallback.onInfo("✅ 轉換完成: " + result.length + " bytes JPEG");
+            }
+            return result;
         } catch (Exception e) {
+            if (frameCallback != null) {
+                frameCallback.onError("❌ YUV→JPEG 轉換錯誤: " + e.getClass().getSimpleName() + ": " + e.getMessage());
+            }
             return null;
         }
     }

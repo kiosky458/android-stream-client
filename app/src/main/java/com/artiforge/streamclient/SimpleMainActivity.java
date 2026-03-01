@@ -436,6 +436,11 @@ public class SimpleMainActivity extends AppCompatActivity {
                 mainHandler.removeCallbacks(autoStopRunnable);
             }
             
+            // 重置計數器
+            uploadCount = 0;
+            uploadSuccess = 0;
+            uploadFail = 0;
+            
             if (cameraManager == null) {
                 appendLog("⚠️ 相機未初始化，嘗試重新初始化...");
                 initializeCamera();
@@ -476,13 +481,21 @@ public class SimpleMainActivity extends AppCompatActivity {
             
             cameraManager.stopStreaming();
             appendLog("⏹️ 相機串流已停止");
+            appendLog("📊 統計: 總計 " + uploadCount + " 影格，成功 " + uploadSuccess + "，失敗 " + uploadFail);
         } catch (Exception e) {
             appendLog("❌ 停止失敗: " + e.getMessage());
         }
     }
     
+    private volatile int uploadCount = 0;
+    private volatile int uploadSuccess = 0;
+    private volatile int uploadFail = 0;
+    
     private void uploadFrame(byte[] jpegData) {
-        if (!isConnected || socket == null) return;
+        if (!isConnected || socket == null) {
+            appendLog("⚠️ 未連接，無法上傳");
+            return;
+        }
         
         try {
             String serverUrl = serverUrlInput.getText().toString().trim();
@@ -495,6 +508,9 @@ public class SimpleMainActivity extends AppCompatActivity {
                     .readTimeout(2, java.util.concurrent.TimeUnit.SECONDS)
                     .build();
             }
+            
+            uploadCount++;
+            final int frameNum = uploadCount;
             
             // 使用 OkHttp 上傳影格
             new Thread(() -> {
@@ -509,18 +525,32 @@ public class SimpleMainActivity extends AppCompatActivity {
                         .post(body)
                         .build();
                     
+                    long startTime = System.currentTimeMillis();
                     okhttp3.Response response = httpClient.newCall(request).execute();
-                    response.close(); // 立即關閉回應
+                    long elapsed = System.currentTimeMillis() - startTime;
+                    
+                    if (response.isSuccessful()) {
+                        uploadSuccess++;
+                        if (frameNum == 1 || frameNum % 10 == 0) {
+                            mainHandler.post(() -> appendLog("📤 上傳成功 #" + frameNum + ": " + jpegData.length + " bytes (" + elapsed + "ms)"));
+                        }
+                    } else {
+                        uploadFail++;
+                        mainHandler.post(() -> appendLog("❌ 上傳失敗 #" + frameNum + ": HTTP " + response.code()));
+                    }
+                    response.close();
                     
                 } catch (java.net.SocketTimeoutException e) {
-                    // 超時靜默失敗
+                    uploadFail++;
+                    mainHandler.post(() -> appendLog("❌ 上傳超時 #" + frameNum));
                 } catch (Exception e) {
-                    // 其他錯誤靜默失敗
+                    uploadFail++;
+                    mainHandler.post(() -> appendLog("❌ 上傳錯誤 #" + frameNum + ": " + e.getMessage()));
                 }
             }).start();
             
         } catch (Exception e) {
-            // 靜默失敗
+            appendLog("❌ 上傳異常: " + e.getMessage());
         }
     }
     
