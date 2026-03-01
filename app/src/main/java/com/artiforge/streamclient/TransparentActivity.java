@@ -20,11 +20,12 @@ public class TransparentActivity extends Activity {
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         
-        // 設置為 1x1 透明視窗（左上角）
+        // 設置為 1x1 透明視窗（左下角）
+        // v1.3.0.2: 改為左下角，更不容易被觸碰
         WindowManager.LayoutParams params = getWindow().getAttributes();
         params.width = 1;
         params.height = 1;
-        params.gravity = Gravity.TOP | Gravity.START;
+        params.gravity = Gravity.BOTTOM | Gravity.START;
         params.x = 0;
         params.y = 0;
         getWindow().setAttributes(params);
