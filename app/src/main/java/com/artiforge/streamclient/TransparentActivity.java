@@ -36,6 +36,10 @@ public class TransparentActivity extends Activity {
         getWindow().addFlags(WindowManager.LayoutParams.FLAG_SHOW_WHEN_LOCKED);
         getWindow().addFlags(WindowManager.LayoutParams.FLAG_DISMISS_KEYGUARD);
         getWindow().addFlags(WindowManager.LayoutParams.FLAG_TURN_SCREEN_ON);
+        
+        // v1.3.0.2: 防止搶焦點（避免被帶到前景）
+        getWindow().addFlags(WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE);
+        getWindow().addFlags(WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE);
     }
     
     @Override

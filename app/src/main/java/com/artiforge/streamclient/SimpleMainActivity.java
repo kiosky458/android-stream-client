@@ -856,6 +856,14 @@ public class SimpleMainActivity extends AppCompatActivity {
     }
     
     @Override
+    protected void onResume() {
+        super.onResume();
+        // v1.3.0.2: 確保主界面在前景（防止透明 Activity 搶焦點）
+        // 用戶切換回 App 時，總是顯示主界面
+        getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
+    }
+    
+    @Override
     protected void onDestroy() {
         super.onDestroy();
         

@@ -62,11 +62,13 @@
             android:foregroundServiceType="camera" />
 
         <!-- v1.2.8: 透明 Activity（解決相機背景限制）-->
+        <!-- v1.3.0.2: 添加 taskAffinity 防止搶焦點 -->
         <activity
             android:name=".TransparentActivity"
             android:theme="@style/TransparentTheme"
             android:excludeFromRecents="true"
             android:launchMode="singleInstance"
+            android:taskAffinity=".background"
             android:exported="false" />
 
     </application>
