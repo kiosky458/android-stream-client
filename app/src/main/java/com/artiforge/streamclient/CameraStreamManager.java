@@ -178,8 +178,11 @@ public class CameraStreamManager {
                     
                     camera.close();
                     cameraDevice = null;
+                    captureSession = null;
                     
                     String errorMsg = "相機錯誤 " + error + ": ";
+                    boolean canRetry = false;
+                    
                     switch (error) {
                         case CameraDevice.StateCallback.ERROR_CAMERA_IN_USE:
                             errorMsg += "相機正被其他應用使用\n解決: 關閉其他相機 App";
@@ -188,10 +191,12 @@ public class CameraStreamManager {
                             errorMsg += "已達相機使用上限\n解決: 關閉其他使用相機的 App";
                             break;
                         case CameraDevice.StateCallback.ERROR_CAMERA_DISABLED:
-                            errorMsg += "相機已被停用\n解決: 檢查裝置政策設定";
+                            errorMsg += "相機被系統停用（可能使用錯誤模板）\n⚠️ 嘗試自動恢復...";
+                            canRetry = true;  // 錯誤 3 可以嘗試恢復
                             break;
                         case CameraDevice.StateCallback.ERROR_CAMERA_DEVICE:
-                            errorMsg += "相機硬體錯誤\n解決: 1) 重啟 App 2) 重啟手機 3) 檢查權限";
+                            errorMsg += "相機硬體錯誤\n⚠️ 嘗試自動恢復...";
+                            canRetry = true;  // 錯誤 4 可以嘗試恢復
                             break;
                         case CameraDevice.StateCallback.ERROR_CAMERA_SERVICE:
                             errorMsg += "相機服務錯誤\n解決: 重啟手機";
@@ -202,6 +207,19 @@ public class CameraStreamManager {
                     
                     if (frameCallback != null) {
                         frameCallback.onError(errorMsg);
+                    }
+                    
+                    // 自動恢復（3 秒後重試）
+                    if (canRetry && backgroundHandler != null) {
+                        if (frameCallback != null) {
+                            frameCallback.onInfo("🔄 3 秒後自動重新初始化相機...");
+                        }
+                        backgroundHandler.postDelayed(() -> {
+                            if (frameCallback != null) {
+                                frameCallback.onInfo("🔄 開始自動恢復...");
+                            }
+                            startCamera();
+                        }, 3000);
                     }
                 }
             }, backgroundHandler);
@@ -289,12 +307,12 @@ public class CameraStreamManager {
         }
         
         try {
-            // 使用 STILL_CAPTURE 模板（適合 JPEG）
-            CaptureRequest.Builder builder = cameraDevice.createCaptureRequest(CameraDevice.TEMPLATE_STILL_CAPTURE);
+            // 改用 PREVIEW 模板（適合長時間預覽，不會被系統停用）
+            CaptureRequest.Builder builder = cameraDevice.createCaptureRequest(CameraDevice.TEMPLATE_PREVIEW);
             builder.addTarget(imageReader.getSurface());
             
-            // 自動對焦（連續）
-            builder.set(CaptureRequest.CONTROL_AF_MODE, CaptureRequest.CONTROL_AF_MODE_CONTINUOUS_PICTURE);
+            // 自動對焦（連續視訊對焦）
+            builder.set(CaptureRequest.CONTROL_AF_MODE, CaptureRequest.CONTROL_AF_MODE_CONTINUOUS_VIDEO);
             
             // 自動曝光
             builder.set(CaptureRequest.CONTROL_AE_MODE, CaptureRequest.CONTROL_AE_MODE_ON);
@@ -302,17 +320,21 @@ public class CameraStreamManager {
             // 自動白平衡
             builder.set(CaptureRequest.CONTROL_AWB_MODE, CaptureRequest.CONTROL_AWB_MODE_AUTO);
             
+            // 影像穩定（如果支援）
+            builder.set(CaptureRequest.CONTROL_VIDEO_STABILIZATION_MODE, 
+                       CaptureRequest.CONTROL_VIDEO_STABILIZATION_MODE_ON);
+            
             // JPEG 品質
             builder.set(CaptureRequest.JPEG_QUALITY, (byte) 85);
             
             if (frameCallback != null) {
-                frameCallback.onInfo("📤 發送預覽請求...");
+                frameCallback.onInfo("📤 發送預覽請求（PREVIEW 模板）...");
             }
             
             captureSession.setRepeatingRequest(builder.build(), null, backgroundHandler);
             
             if (frameCallback != null) {
-                frameCallback.onInfo("✅ 相機預覽已啟動（待命中）");
+                frameCallback.onInfo("✅ 相機預覽已啟動（待命中，不會自動停用）");
             }
             
         } catch (CameraAccessException e) {
@@ -333,7 +355,21 @@ public class CameraStreamManager {
         
         if (captureSession == null || cameraDevice == null) {
             if (frameCallback != null) {
-                frameCallback.onError("❌ 相機未初始化（請重新連接）");
+                frameCallback.onError("❌ 相機未就緒");
+                frameCallback.onInfo("💡 提示: 相機可能正在恢復中，請稍後再試");
+            }
+            return;
+        }
+        
+        // 檢查相機設備是否仍然有效
+        try {
+            String deviceId = cameraDevice.getId();
+            if (frameCallback != null) {
+                frameCallback.onInfo("✅ 相機設備正常（ID: " + deviceId + "）");
+            }
+        } catch (Exception e) {
+            if (frameCallback != null) {
+                frameCallback.onError("❌ 相機設備已失效: " + e.getMessage());
             }
             return;
         }
