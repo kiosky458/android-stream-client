@@ -48,9 +48,11 @@ public class SimpleMainActivity extends AppCompatActivity {
             Manifest.permission.CAMERA,
             Manifest.permission.POST_NOTIFICATIONS
     };
+    
+    // v1.2.8: 固定伺服器位址
+    private static final String SERVER_URL = "https://artiforge.studio";
+    private static final long HEARTBEAT_INTERVAL = 3 * 60 * 1000; // 3 分鐘
 
-    private EditText serverUrlInput;
-    private Button connectBtn;
     private TextView statusText;
     private TextView logText;
     
@@ -68,7 +70,7 @@ public class SimpleMainActivity extends AppCompatActivity {
     
     // v1.2.5: 錯誤追蹤（自動回報到 Web 端）
     private String lastLogLine = "";
-    private String appVersion = "1.2.7";
+    private String appVersion = "1.2.8";
     
     // v1.2.6: 懸浮窗（解決後台相機限制）
     private WindowManager overlayWindowManager;
@@ -76,6 +78,9 @@ public class SimpleMainActivity extends AppCompatActivity {
     
     // v1.2.7: WAKE_LOCK（保持懸浮窗運行）
     private PowerManager.WakeLock wakeLock;
+    
+    // v1.2.8: 心跳檢查（3 分鐘自動重連）
+    private Runnable heartbeatRunnable;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -112,8 +117,6 @@ public class SimpleMainActivity extends AppCompatActivity {
             }
             
             // 初始化 UI
-            serverUrlInput = findViewById(R.id.serverUrlInput);
-            connectBtn = findViewById(R.id.connectBtn);
             statusText = findViewById(R.id.statusText);
             logText = findViewById(R.id.logText);
             
@@ -136,28 +139,29 @@ public class SimpleMainActivity extends AppCompatActivity {
                 }
             });
             
-            // 連接按鈕
-            connectBtn.setOnClickListener(v -> {
-                if (isConnected) {
-                    disconnect();
-                } else {
-                    connect();
-                }
-            });
+            // v1.2.8: 啟動透明 Activity（解決相機背景限制）
+            startTransparentActivity();
+            
+            // v1.2.8: 啟動心跳檢查（3 分鐘自動重連）
+            startHeartbeat();
             
             // 檢查權限
             if (!checkPermissions()) {
                 requestPermissions();
+            } else {
+                // v1.2.8: 自動連線
+                appendLog("✅ App 啟動成功！開始自動連線...");
+                connect();
             }
             
-            appendLog("✅ App 啟動成功！");
             try {
                 String versionName = getPackageManager().getPackageInfo(getPackageName(), 0).versionName;
-                appendLog("版本: " + versionName + " (HTTPS + 480p @ 10fps)");
+                appendLog("📱 版本: " + versionName);
+                appendLog("🌐 伺服器: " + SERVER_URL);
             } catch (Exception e) {
-                appendLog("版本: 1.1.0 (HTTPS + 480p @ 10fps)");
+                appendLog("📱 版本: 1.2.8");
+                appendLog("🌐 伺服器: " + SERVER_URL);
             }
-            appendLog("請輸入伺服器網址並點擊連接");
             
         } catch (Exception e) {
             Toast.makeText(this, "錯誤: " + e.getMessage(), Toast.LENGTH_LONG).show();
@@ -166,17 +170,11 @@ public class SimpleMainActivity extends AppCompatActivity {
     }
     
     private void connect() {
-        String serverUrl = serverUrlInput.getText().toString().trim();
-        
-        if (serverUrl.isEmpty()) {
-            Toast.makeText(this, "請輸入伺服器網址", Toast.LENGTH_SHORT).show();
-            return;
-        }
-        
-        appendLog("正在連接: " + serverUrl);
+        // v1.2.8: 使用固定伺服器位址
+        appendLog("🔄 正在連接: " + SERVER_URL);
         
         try {
-            // Socket.IO 配置（適應 HTTPS）
+            // Socket.IO 配置（HTTPS 固定）
             IO.Options options = new IO.Options();
             options.transports = new String[] {"websocket", "polling"};
             options.reconnection = true;
@@ -184,9 +182,9 @@ public class SimpleMainActivity extends AppCompatActivity {
             options.reconnectionAttempts = 5;
             options.timeout = 20000;
             options.forceNew = true;
-            options.secure = serverUrl.startsWith("https");
+            options.secure = true; // v1.2.8: HTTPS 固定
             
-            socket = IO.socket(serverUrl, options);
+            socket = IO.socket(SERVER_URL, options);
             
             socket.on(Socket.EVENT_CONNECT, args -> {
                 mainHandler.post(() -> {
@@ -323,13 +321,11 @@ public class SimpleMainActivity extends AppCompatActivity {
     
     private void updateUI() {
         if (isConnected) {
-            statusText.setText("✅ 已連接");
+            statusText.setText("✅ 已連接 - " + SERVER_URL);
             statusText.setTextColor(0xFF00AA00);
-            connectBtn.setText("斷開連接");
         } else {
-            statusText.setText("❌ 未連接");
+            statusText.setText("❌ 未連接 - 嘗試重連中...");
             statusText.setTextColor(0xFFFF0000);
-            connectBtn.setText("連接");
         }
     }
     
@@ -577,7 +573,7 @@ public class SimpleMainActivity extends AppCompatActivity {
         }
         
         try {
-            String serverUrl = serverUrlInput.getText().toString().trim();
+            // v1.2.8: 使用固定伺服器位址
             
             // 初始化 HTTP 客戶端（複用連接）
             if (httpClient == null) {
@@ -600,7 +596,7 @@ public class SimpleMainActivity extends AppCompatActivity {
                     );
                     
                     okhttp3.Request request = new okhttp3.Request.Builder()
-                        .url(serverUrl + "/upload_frame")
+                        .url(SERVER_URL + "/upload_frame")
                         .post(body)
                         .build();
                     
@@ -816,9 +812,54 @@ public class SimpleMainActivity extends AppCompatActivity {
         }
     }
     
+    /**
+     * v1.2.8: 啟動透明 Activity（解決相機背景限制）
+     */
+    private void startTransparentActivity() {
+        try {
+            Intent intent = new Intent(this, TransparentActivity.class);
+            intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+            startActivity(intent);
+            appendLog("🔒 透明視窗已啟動（保持前景狀態）");
+        } catch (Exception e) {
+            appendLog("⚠️ 透明視窗啟動失敗: " + e.getMessage());
+        }
+    }
+    
+    /**
+     * v1.2.8: 啟動心跳檢查（每 3 分鐘檢查連線）
+     */
+    private void startHeartbeat() {
+        heartbeatRunnable = new Runnable() {
+            @Override
+            public void run() {
+                // 檢查連線狀態
+                if (!isConnected || socket == null || !socket.connected()) {
+                    appendLog("💔 心跳檢測：連線已斷開，嘗試重連...");
+                    connect();
+                } else {
+                    appendLog("💚 心跳檢測：連線正常");
+                }
+                
+                // 3 分鐘後再次檢查
+                mainHandler.postDelayed(this, HEARTBEAT_INTERVAL);
+            }
+        };
+        
+        // 首次延遲 3 分鐘
+        mainHandler.postDelayed(heartbeatRunnable, HEARTBEAT_INTERVAL);
+        appendLog("💗 心跳監控已啟動（每 3 分鐘檢查）");
+    }
+    
     @Override
     protected void onDestroy() {
         super.onDestroy();
+        
+        // v1.2.8: 停止心跳檢查
+        if (heartbeatRunnable != null) {
+            mainHandler.removeCallbacks(heartbeatRunnable);
+        }
+        
         removeOverlayWindow(); // v1.2.6: 清理懸浮窗
         
         // v1.2.7: 釋放 WAKE_LOCK

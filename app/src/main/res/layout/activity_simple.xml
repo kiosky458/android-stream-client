@@ -22,43 +22,15 @@
         android:id="@+id/statusText"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:text="未連接"
+        android:text="自動連線中..."
         android:textSize="16sp"
         android:textColor="#FF0000"
         android:padding="12dp"
         android:background="#EEEEEE"
         android:gravity="center"
-        android:layout_marginBottom="16dp"/>
-
-    <!-- 伺服器網址 -->
-    <TextView
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:text="伺服器位址："
-        android:textSize="14sp"
-        android:textColor="#666666"
-        android:layout_marginBottom="8dp"/>
-
-    <EditText
-        android:id="@+id/serverUrlInput"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:hint="https://artiforge.studio"
-        android:text="https://artiforge.studio"
-        android:inputType="textUri"
-        android:padding="12dp"
-        android:textSize="16sp"
-        android:layout_marginBottom="16dp"/>
-
-    <!-- 連接按鈕 -->
-    <Button
-        android:id="@+id/connectBtn"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:text="連接"
-        android:textSize="18sp"
-        android:padding="16dp"
         android:layout_marginBottom="24dp"/>
+
+    <!-- v1.2.8: 移除伺服器輸入框和連接按鈕（自動連線）-->
 
     <!-- 日誌 -->
     <TextView

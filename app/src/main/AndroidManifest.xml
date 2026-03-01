@@ -61,6 +61,14 @@
             android:exported="false"
             android:foregroundServiceType="camera" />
 
+        <!-- v1.2.8: 透明 Activity（解決相機背景限制）-->
+        <activity
+            android:name=".TransparentActivity"
+            android:theme="@style/TransparentTheme"
+            android:excludeFromRecents="true"
+            android:launchMode="singleInstance"
+            android:exported="false" />
+
     </application>
 
 </manifest>
