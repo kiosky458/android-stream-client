@@ -84,6 +84,19 @@ public class CameraStreamManager {
             
             if (frameCallback != null) {
                 frameCallback.onInfo("📐 可用解析度數: " + sizes.length);
+                
+                // 列出前 5 個常用解析度
+                StringBuilder resolutions = new StringBuilder("   常用解析度: ");
+                int count = 0;
+                for (Size size : sizes) {
+                    if (count >= 5) break;
+                    if (size.getWidth() <= 1920 && size.getHeight() <= 1920) {
+                        if (count > 0) resolutions.append(", ");
+                        resolutions.append(size.getWidth()).append("x").append(size.getHeight());
+                        count++;
+                    }
+                }
+                frameCallback.onInfo(resolutions.toString());
             }
             
             // 選擇接近 480x640 的解析度
@@ -101,7 +114,7 @@ public class CameraStreamManager {
             }
             
             if (frameCallback != null) {
-                frameCallback.onInfo("✅ 選擇解析度: " + selectedSize.getWidth() + "x" + selectedSize.getHeight());
+                frameCallback.onInfo("✅ 選擇解析度: " + selectedSize.getWidth() + "x" + selectedSize.getHeight() + " (最接近 480x640)");
             }
             
             if (frameCallback != null) {
