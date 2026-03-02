@@ -1,6 +1,7 @@
 package com.artiforge.streamclient;
 
 import android.Manifest;
+import android.app.KeyguardManager;
 import android.app.NotificationChannel;
 import android.app.NotificationManager;
 import android.app.PendingIntent;
@@ -218,6 +219,9 @@ public class SimpleMainActivity extends AppCompatActivity {
                     // v1.2.6: 請求懸浮窗權限（解決後台相機限制）
                     requestOverlayPermission();
                     
+                    // v1.3.1: 發送相機狀態到 Web 端
+                    sendCameraStatus();
+                    
                     // 立即初始化相機（提前發現問題）
                     if (checkPermissions()) {
                         appendLog("📸 開始初始化相機系統...");
@@ -415,9 +419,19 @@ public class SimpleMainActivity extends AppCompatActivity {
                 // v1.2.8: 權限授予後自動連線
                 appendLog("🔄 開始自動連線...");
                 connect();
+                
+                // v1.3.1: 權限授予後，更新相機狀態
+                if (socket != null && socket.connected()) {
+                    sendCameraStatus();
+                }
             } else {
                 appendLog("⚠️ 部分權限被拒絕，功能可能受限");
                 appendLog("⚠️ 建議授予所有權限後重啟 App");
+                
+                // v1.3.1: 權限被拒，發送不可用狀態
+                if (socket != null && socket.connected()) {
+                    sendCameraStatus();
+                }
             }
         }
     }
@@ -855,12 +869,61 @@ public class SimpleMainActivity extends AppCompatActivity {
         appendLog("💗 心跳監控已啟動（每 3 分鐘檢查）");
     }
     
+    /**
+     * v1.3.1: 檢查相機是否可用（權限 + 設備解鎖）
+     */
+    private boolean checkCameraAvailable() {
+        // 1. 檢查權限
+        if (!checkPermissions()) {
+            return false;
+        }
+        
+        // 2. 檢查設備是否解鎖
+        KeyguardManager keyguardManager = (KeyguardManager) getSystemService(Context.KEYGUARD_SERVICE);
+        if (keyguardManager != null && keyguardManager.isKeyguardLocked()) {
+            return false; // 設備鎖定中
+        }
+        
+        return true;
+    }
+    
+    /**
+     * v1.3.1: 發送相機狀態到 Web 端
+     */
+    private void sendCameraStatus() {
+        if (socket == null || !socket.connected()) {
+            return;
+        }
+        
+        boolean available = checkCameraAvailable();
+        
+        try {
+            JSONObject status = new JSONObject();
+            status.put("available", available);
+            status.put("reason", available ? "ready" : "locked");
+            socket.emit("camera_status", status);
+            
+            if (available) {
+                appendLog("📸 相機狀態：可用");
+            } else {
+                appendLog("🔒 相機狀態：手機未解鎖");
+            }
+        } catch (Exception e) {
+            appendLog("❌ 發送相機狀態失敗: " + e.getMessage());
+        }
+    }
+    
     @Override
     protected void onResume() {
         super.onResume();
         // v1.3.0.2: 確保主界面在前景（防止透明 Activity 搶焦點）
         // 用戶切換回 App 時，總是顯示主界面
         getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
+        
+        // v1.3.1: 用戶切換回 App（可能剛解鎖），更新相機狀態
+        if (socket != null && socket.connected()) {
+            sendCameraStatus();
+        }
     }
     
     @Override
