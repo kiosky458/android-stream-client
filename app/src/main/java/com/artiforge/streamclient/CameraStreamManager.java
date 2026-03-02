@@ -42,6 +42,8 @@ public class CameraStreamManager {
         void onFrameAvailable(byte[] jpegData);
         void onError(String error);
         void onInfo(String message);
+        // v1.3.1: 相機狀態變化回調
+        void onCameraStatusChanged(boolean available, String reason);
     }
     
     public CameraStreamManager(Context context) {
@@ -189,6 +191,8 @@ public class CameraStreamManager {
                     cameraDevice = camera;
                     if (frameCallback != null) {
                         frameCallback.onInfo("✅ 相機已開啟（ID: " + camera.getId() + "）");
+                        // v1.3.1: 通知相機可用
+                        frameCallback.onCameraStatusChanged(true, "ready");
                     }
                     createCaptureSession();
                 }
@@ -241,6 +245,8 @@ public class CameraStreamManager {
                     
                     if (frameCallback != null) {
                         frameCallback.onError(errorMsg);
+                        // v1.3.1: 通知相機不可用（鎖定或錯誤）
+                        frameCallback.onCameraStatusChanged(false, "locked");
                     }
                     
                     // 自動恢復（3 秒後重試）
@@ -261,10 +267,14 @@ public class CameraStreamManager {
         } catch (CameraAccessException e) {
             if (frameCallback != null) {
                 frameCallback.onError("相機存取失敗: " + e.getMessage());
+                // v1.3.1: 通知相機不可用
+                frameCallback.onCameraStatusChanged(false, "access_error");
             }
         } catch (SecurityException e) {
             if (frameCallback != null) {
                 frameCallback.onError("缺少相機權限");
+                // v1.3.1: 通知相機不可用（權限問題）
+                frameCallback.onCameraStatusChanged(false, "permission_denied");
             }
         }
     }

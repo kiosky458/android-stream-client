@@ -1,7 +1,6 @@
 package com.artiforge.streamclient;
 
 import android.Manifest;
-import android.app.KeyguardManager;
 import android.app.NotificationChannel;
 import android.app.NotificationManager;
 import android.app.PendingIntent;
@@ -138,6 +137,12 @@ public class SimpleMainActivity extends AppCompatActivity {
                 public void onInfo(String message) {
                     appendLog(message);
                 }
+                
+                @Override
+                public void onCameraStatusChanged(boolean available, String reason) {
+                    // v1.3.1: 相機狀態變化時，發送到 Web 端
+                    mainHandler.post(() -> sendCameraStatus(available, reason));
+                }
             });
             
             // v1.2.8: 啟動透明 Activity（解決相機背景限制）
@@ -219,10 +224,7 @@ public class SimpleMainActivity extends AppCompatActivity {
                     // v1.2.6: 請求懸浮窗權限（解決後台相機限制）
                     requestOverlayPermission();
                     
-                    // v1.3.1: 發送相機狀態到 Web 端
-                    sendCameraStatus();
-                    
-                    // 立即初始化相機（提前發現問題）
+                    // v1.3.1: 初始化相機（會自動發送狀態）
                     if (checkPermissions()) {
                         appendLog("📸 開始初始化相機系統...");
                         initializeCamera();
@@ -420,18 +422,13 @@ public class SimpleMainActivity extends AppCompatActivity {
                 appendLog("🔄 開始自動連線...");
                 connect();
                 
-                // v1.3.1: 權限授予後，更新相機狀態
-                if (socket != null && socket.connected()) {
-                    sendCameraStatus();
+                // v1.3.1: 權限授予後，初始化相機（會自動發送狀態）
+                if (cameraManager != null) {
+                    cameraManager.startCamera();
                 }
             } else {
                 appendLog("⚠️ 部分權限被拒絕，功能可能受限");
                 appendLog("⚠️ 建議授予所有權限後重啟 App");
-                
-                // v1.3.1: 權限被拒，發送不可用狀態
-                if (socket != null && socket.connected()) {
-                    sendCameraStatus();
-                }
             }
         }
     }
@@ -510,6 +507,12 @@ public class SimpleMainActivity extends AppCompatActivity {
                     @Override
                     public void onInfo(String message) {
                         mainHandler.post(() -> appendLog(message));
+                    }
+                    
+                    @Override
+                    public void onCameraStatusChanged(boolean available, String reason) {
+                        // v1.3.1: 相機狀態變化時，發送到 Web 端
+                        mainHandler.post(() -> sendCameraStatus(available, reason));
                     }
                 });
             }
@@ -870,43 +873,23 @@ public class SimpleMainActivity extends AppCompatActivity {
     }
     
     /**
-     * v1.3.1: 檢查相機是否可用（權限 + 設備解鎖）
-     */
-    private boolean checkCameraAvailable() {
-        // 1. 檢查權限
-        if (!checkPermissions()) {
-            return false;
-        }
-        
-        // 2. 檢查設備是否解鎖
-        KeyguardManager keyguardManager = (KeyguardManager) getSystemService(Context.KEYGUARD_SERVICE);
-        if (keyguardManager != null && keyguardManager.isKeyguardLocked()) {
-            return false; // 設備鎖定中
-        }
-        
-        return true;
-    }
-    
-    /**
      * v1.3.1: 發送相機狀態到 Web 端
      */
-    private void sendCameraStatus() {
+    private void sendCameraStatus(boolean available, String reason) {
         if (socket == null || !socket.connected()) {
             return;
         }
         
-        boolean available = checkCameraAvailable();
-        
         try {
             JSONObject status = new JSONObject();
             status.put("available", available);
-            status.put("reason", available ? "ready" : "locked");
+            status.put("reason", reason);
             socket.emit("camera_status", status);
             
             if (available) {
                 appendLog("📸 相機狀態：可用");
             } else {
-                appendLog("🔒 相機狀態：手機未解鎖");
+                appendLog("🔒 相機狀態：" + (reason.equals("locked") ? "手機鎖定，相機無權限" : "不可用"));
             }
         } catch (Exception e) {
             appendLog("❌ 發送相機狀態失敗: " + e.getMessage());
@@ -920,9 +903,9 @@ public class SimpleMainActivity extends AppCompatActivity {
         // 用戶切換回 App 時，總是顯示主界面
         getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
         
-        // v1.3.1: 用戶切換回 App（可能剛解鎖），更新相機狀態
-        if (socket != null && socket.connected()) {
-            sendCameraStatus();
+        // v1.3.1: 用戶切換回 App（可能剛解鎖），重新初始化相機（會自動發送狀態）
+        if (checkPermissions() && cameraManager != null) {
+            cameraManager.startCamera();
         }
     }
     
