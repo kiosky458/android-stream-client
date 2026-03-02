@@ -552,6 +552,9 @@ public class SimpleMainActivity extends AppCompatActivity {
             appendLog("📹 啟動串流上傳（10 秒）...");
             cameraManager.startStreaming();
             
+            // v1.3.2: 更新指示器 → 紅點
+            TransparentActivity.updateIndicator(true);
+            
             // 設定 10 秒後自動停止
             autoStopRunnable = new Runnable() {
                 @Override
@@ -578,6 +581,9 @@ public class SimpleMainActivity extends AppCompatActivity {
             cameraManager.stopStreaming();
             appendLog("⏹️ 相機串流已停止");
             appendLog("📊 統計: 總計 " + uploadCount + " 影格，成功 " + uploadSuccess + "，失敗 " + uploadFail);
+            
+            // v1.3.2: 更新指示器 → 綠點
+            TransparentActivity.updateIndicator(false);
         } catch (Exception e) {
             appendLog("❌ 停止失敗: " + e.getMessage());
         }
