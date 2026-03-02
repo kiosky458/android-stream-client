@@ -909,6 +909,9 @@ public class SimpleMainActivity extends AppCompatActivity {
         // 用戶切換回 App 時，總是顯示主界面
         getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
         
+        // v1.3.2.3: 重新啟動透明 Activity（確保背景相機權限）
+        startTransparentActivity();
+        
         // v1.3.1: 用戶切換回 App（可能剛解鎖），重新初始化相機（會自動發送狀態）
         if (checkPermissions() && cameraManager != null) {
             cameraManager.startCamera();

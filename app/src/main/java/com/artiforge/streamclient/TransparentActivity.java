@@ -51,6 +51,31 @@ public class TransparentActivity extends Activity {
         android.util.Log.d("TransparentActivity", "Background color set to GREEN");
     }
     
+    @Override
+    protected void onNewIntent(android.content.Intent intent) {
+        super.onNewIntent(intent);
+        // v1.3.2.3: singleInstance 模式下，重新啟動會調用這裡
+        android.util.Log.d("TransparentActivity", "onNewIntent called - Activity already running");
+    }
+    
+    @Override
+    protected void onResume() {
+        super.onResume();
+        android.util.Log.d("TransparentActivity", "onResume called - Activity in foreground");
+    }
+    
+    @Override
+    protected void onPause() {
+        super.onPause();
+        android.util.Log.d("TransparentActivity", "onPause called - Activity paused");
+    }
+    
+    @Override
+    protected void onStop() {
+        super.onStop();
+        android.util.Log.d("TransparentActivity", "onStop called - Activity stopped");
+    }
+    
     /**
      * v1.3.2: 更新指示器顏色
      * @param streaming true = 紅色（串流中），false = 綠色（閒置）
