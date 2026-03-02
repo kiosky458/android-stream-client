@@ -55,6 +55,14 @@ public class CameraStreamManager {
     }
     
     public void startCamera() {
+        // v1.3.2.1: 避免重複啟動
+        if (cameraDevice != null) {
+            if (frameCallback != null) {
+                frameCallback.onInfo("📷 相機已在運行，跳過重新啟動");
+            }
+            return;
+        }
+        
         if (frameCallback != null) {
             frameCallback.onInfo("🎬 開始初始化相機...");
         }
@@ -229,12 +237,13 @@ public class CameraStreamManager {
                             errorMsg += "已達相機使用上限\n解決: 關閉其他使用相機的 App";
                             break;
                         case CameraDevice.StateCallback.ERROR_CAMERA_DISABLED:
-                            errorMsg += "相機被系統停用（格式/模板不相容）\n⚠️ 嘗試自動恢復...";
-                            canRetry = true;  // 錯誤 3 可以嘗試恢復
+                            // v1.3.2.1: 不自動重試（通常是手機鎖定）
+                            errorMsg += "相機被系統停用（手機可能鎖定）\n解決: 解鎖手機";
+                            canRetry = false;  // 不自動重試，避免閃爍
                             break;
                         case CameraDevice.StateCallback.ERROR_CAMERA_DEVICE:
                             errorMsg += "相機硬體錯誤\n⚠️ 嘗試自動恢復...";
-                            canRetry = true;  // 錯誤 4 可以嘗試恢復
+                            canRetry = true;  // 硬體錯誤可以重試
                             break;
                         case CameraDevice.StateCallback.ERROR_CAMERA_SERVICE:
                             errorMsg += "相機服務錯誤\n解決: 重啟手機";
