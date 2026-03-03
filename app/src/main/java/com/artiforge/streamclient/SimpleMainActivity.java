@@ -70,7 +70,7 @@ public class SimpleMainActivity extends AppCompatActivity {
     
     // v1.2.5: 錯誤追蹤（自動回報到 Web 端）
     private String lastLogLine = "";
-    private String appVersion = "1.2.8";
+    private String appVersion = "1.3.5";
     
     // v1.2.6: 懸浮窗（解決後台相機限制）
     private WindowManager overlayWindowManager;
@@ -145,8 +145,14 @@ public class SimpleMainActivity extends AppCompatActivity {
                 }
             });
             
-            // v1.2.8: 啟動透明 Activity（解決相機背景限制）
-            startTransparentActivity();
+            // v1.3.5: 移除透明 Activity，改用懸浮窗
+            // startTransparentActivity(); // 已停用
+            
+            // v1.3.5: 如果懸浮窗權限已授予，直接創建
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M && Settings.canDrawOverlays(this)) {
+                appendLog("✅ 懸浮窗權限已存在，直接創建");
+                createOverlayWindow();
+            }
             
             // v1.2.8: 啟動心跳檢查（3 分鐘自動重連）
             startHeartbeat();
@@ -751,8 +757,8 @@ public class SimpleMainActivity extends AppCompatActivity {
                 }
             } else {
                 appendLog("✅ 懸浮窗權限已授予");
-                // v1.2.7: 延遲 2 秒創建（等待前景服務完全啟動）
-                mainHandler.postDelayed(() -> createOverlayWindow(), 2000);
+                // v1.3.5: 立即創建懸浮窗（取代透明 Activity）
+                createOverlayWindow();
             }
         }
     }
