@@ -7,7 +7,7 @@ import android.view.WindowManager;
 
 /**
  * v1.2.8: 透明 Activity（解決相機背景限制）
- * v1.3.4: 恢復到 v1.3.1 的穩定設計（1×1 透明）
+ * v1.3.5: 完全恢復 v1.2.8 穩定設計
  * 
  * 原理：
  * - 創建 1x1 透明視窗
@@ -21,12 +21,11 @@ public class TransparentActivity extends Activity {
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         
-        // 設置為 1x1 透明視窗（左下角）
-        // v1.3.0.2: 改為左下角，更不容易被觸碰
+        // v1.2.8: 設置為 1x1 透明視窗（左上角）
         WindowManager.LayoutParams params = getWindow().getAttributes();
         params.width = 1;
         params.height = 1;
-        params.gravity = Gravity.BOTTOM | Gravity.START;
+        params.gravity = Gravity.TOP | Gravity.START;
         params.x = 0;
         params.y = 0;
         getWindow().setAttributes(params);
@@ -38,10 +37,6 @@ public class TransparentActivity extends Activity {
         getWindow().addFlags(WindowManager.LayoutParams.FLAG_SHOW_WHEN_LOCKED);
         getWindow().addFlags(WindowManager.LayoutParams.FLAG_DISMISS_KEYGUARD);
         getWindow().addFlags(WindowManager.LayoutParams.FLAG_TURN_SCREEN_ON);
-        
-        // v1.3.0.2: 防止搶焦點（避免被帶到前景）
-        getWindow().addFlags(WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE);
-        getWindow().addFlags(WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE);
     }
     
     @Override
