@@ -549,21 +549,21 @@ public class SimpleMainActivity extends AppCompatActivity {
                 return;
             }
             
-            appendLog("📹 啟動串流上傳（10 秒）...");
+            appendLog("📹 啟動串流上傳（15 秒）...");
             cameraManager.startStreaming();
             
             // v1.3.2: 更新指示器 → 紅點
             TransparentActivity.updateIndicator(true);
             
-            // 設定 10 秒後自動停止
+            // 設定 15 秒後自動停止
             autoStopRunnable = new Runnable() {
                 @Override
                 public void run() {
-                    appendLog("⏰ 10 秒到，自動停止串流");
+                    appendLog("⏰ 15 秒到，自動停止串流");
                     stopCameraStream();
                 }
             };
-            mainHandler.postDelayed(autoStopRunnable, 10000);
+            mainHandler.postDelayed(autoStopRunnable, 15000);
             
         } catch (Exception e) {
             appendLog("❌ 啟動串流失敗: " + e.getMessage());
